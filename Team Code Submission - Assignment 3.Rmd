@@ -1,0 +1,227 @@
+---
+title: "Team Assignment 3"
+author: "Team 23"
+date: "3/15/2021"
+output: html_document
+---
+
+```{r}
+getwd()
+```
+
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(jrvFinance)
+```
+
+```{r}
+DATE <- function(yyyy,mm,dd) {
+  dte  <- as.Date(sprintf("%i-%i-%i",yyyy,mm,dd),format="%Y-%m-%d")
+  return(dte)
+}
+```
+
+```{r}
+# Question 1a
+start_date <- c(DATE(2020,12,18),DATE(2021,3,31),DATE(2021,6,30),
+              DATE(2021,9,30),DATE(2021,12,31),
+              DATE(2022,3,31),DATE(2022,6,30),
+              DATE(2022,9,30),DATE(2022,12,31))
+end_date <- c(DATE(2021,3,31),DATE(2021,6,30),DATE(2021,9,30),
+              DATE(2021,12,31),DATE(2022,3,31),
+              DATE(2022,6,30),DATE(2022,9,30),
+              DATE(2022,12,31),DATE(2023,3,31))
+swap <- data.table(period=c(0:8))
+swap[, start.date := start_date]
+swap[, end.date := end_date]
+swap[, days := as.numeric(swap$end.date-swap$start.date) ]
+
+libor <- fread("TeamAssignment3_libor.csv")  
+settle <- DATE(2020,12,18)
+maturity <- c(DATE(2020,12,19),DATE(2020,12,25),
+              DATE(2021,1,18),DATE(2021,2,18),
+              DATE(2021,3,18), DATE(2021,6,18),
+              DATE(2021,12,18))
+libor[, start.date := settle]
+libor[, end.date := maturity]
+swap[, L3 := NA]
+
+edf <- fread("TeamAssignment3_edfut.csv")
+edf[, contract := as.character(edf$maturity) ]
+edf <- edf[substr(edf$contract,6,7) %in% c("03","06","09","12"),]
+edf[, maturity := as.Date(maturity,format="%Y-%m-%d")]
+edf[, start.date := as.Date(maturity,format="%m/%d/%Y")+2 ]          
+edf[, forw    := 1-futpr/100 ]
+
+tmp_1 <- data.table(contract=0,start.date=settle,forw=NA)
+tmp_1$forw <- as.data.frame(spline(x=libor$end.date,y=libor$rate,xout=edf$start.date[1],method="natural"))$y
+swap$L3[1] <- data$forw[1]
+data <- rbind(tmp_1,edf[,c("contract","start.date","forw")])
+
+tmp <- data.table(contract=0,start.date=settle,
+                  forw=libor[term=="3 Month",]$rate[1])
+tmp <- rbind(tmp,edf[,c("contract","start.date","forw")])
+
+L3 <- as.data.frame(spline(x=tmp$start.date,y=tmp$forw,xout=swap$start.date,method="natural"))$y
+swap$L3[2:nrow(swap)] <- L3[2:length(L3)]
+swap[, forw := L3]
+
+swap$disfac <- 1
+for (i in 2:nrow(swap)) {
+  nday <- as.numeric(swap$start.date[i]-swap$start.date[i-1])
+  swap$disfac[i] <- swap$disfac[i-1] / (1+swap$forw[i-1]*nday/360)
+}
+
+notional   <-1000000
+swap$payment_amount <- 0
+
+for (i in 2:nrow(swap)) {
+  swap$payment_amount[i] <- swap$L3[i]*swap$L3[i]/0.03 * notional
+}
+swap$payment_amount[9] <- swap$payment_amount[9] + notional
+swap
+PV_payment_amount <- sum(swap$disfac*swap$payment_amount)
+PV_payment_amount
+```
+
+```{r}
+# Question 1b
+percentage_change_price <- (PV_payment_amount - notional)/notional
+percentage_change_price
+change_in_yield <- swap$L3[9]-swap$L3[2]
+change_in_yield
+dmod <- -(percentage_change_price)/change_in_yield
+dmod
+```
+
+
+```{r}
+# Question 2
+swap <- data.table(period=c(0:8),
+                   start.date=seq(DATE(2020,11,18),DATE(2022,11,18),by="3 month"))
+swap[, days := c(0,as.numeric(diff(swap$start.date))) ]
+
+libor <- fread("TeamAssignment3_libor.csv") 
+settle <- DATE(2020,12,18)
+swap[, L3 := NA]
+swap$L3[1] <- 0.0022638
+
+edf <- fread("TeamAssignment3_edfut.csv")
+edf[, contract := as.character(edf$maturity) ]
+edf <- edf[substr(edf$contract,6,7) %in% c("03","06","09","12"),]
+edf[, maturity := as.Date(maturity,format="%Y-%m-%d")]
+edf[, start.date := as.Date(maturity,format="%m/%d/%Y")+2 ]          
+edf[, forw    := 1-futpr/100 ]
+
+tmp <- data.table(contract=0,start.date=settle,
+                  forw=libor[term=="3 Month",]$rate[1])
+tmp <- rbind(tmp,edf[,c("contract","start.date","forw")])
+
+L3 <- as.data.frame(spline(x=tmp$start.date,y=tmp$forw,xout=swap$start.date,method="natural"))$y
+swap$L3[2:nrow(swap)] <- L3[2:length(L3)]
+swap[, forw := L3]
+
+swap$disfac <- 1
+for (i in 2:nrow(swap)) {
+  nday <- as.numeric(swap$start.date[i]-swap$start.date[i-1])
+  swap$disfac[i] <- swap$disfac[i-1] / (1+swap$forw[i-1]*nday/360)
+}
+swap
+
+notional   <- 100000000
+swap$cf.float <- 0
+swap$cf.fixed <- 0
+swap.rate.fixed <- 0.00265
+for (i in 2:nrow(swap)) {
+  swap$cf.float[i] <- swap$days[i]*swap$L3[i-1]/360 * notional
+  swap$cf.fixed[i] <- swap$days[i]*swap.rate.fixed/360 * notional
+}
+PV_float <- sum(swap$disfac*swap$cf.float)
+PV_fixed <- sum(swap$disfac*swap$cf.fixed)
+on_going_swap <- PV_fixed - PV_float
+on_going_swap
+```
+
+```{r}
+# Question 3
+# a
+m      <- 2     
+delt   <- 0.5     
+N      <- 10  
+deltm  <- delt*m   
+
+qtree  = matrix(0, nrow=N+1, ncol=N+1)
+for (i in 1:(N+1)) {
+  for (j in 1:i) {
+    qtree[i,j] = 0.5
+  }
+}
+
+# b
+ztree = matrix(0, nrow=N+1, ncol=N+1) 
+ztree[1,1] = 0.1
+for (i in 2:(N+1)) {
+  ztree[i,1] = ztree[i-1,1]+0.01 
+  for (j in 2:i) {
+    ztree[i,j] = ztree[i,j-1]-0.02 
+  }
+}
+
+prt.tree <- function(tree,digit=2) {
+  nt <- nrow(tree)
+  # transpose tree
+  trantree <- t(tree)
+  nt1 <- 2*nt-1
+  bintree  <- matrix(rep("",nt1*nt),nrow=nt1,ncol=nt)
+  # convert to bin tree
+  i1 <- nt
+  for (j in 1:nt) {
+    i1 <- nt-j+1
+    for (i in 1:j) {
+      bintree[i1,j] <- as.character(round(trantree[i,j],digit))
+      i1 <- i1 + 2
+    }
+  }
+  rownames(bintree) <- rep("",nt1)
+  colnames(bintree) <- rep("",nt)
+  return(noquote(bintree))
+}
+
+# c
+citree = matrix(0,nrow=N+1, ncol=N+1)
+C = 5
+for (i in 2:(N+1)) {
+  citree[i,c(1:i)] <- rep(C,i)
+}
+
+ptree = matrix(0,nrow=N+1, ncol=N+1)   
+ptree[N+1,c(1:(N+1))] = rep(100,(N+1))
+for (i in N:1) {
+  i1 = i+1
+  ptree[i,1:i] = (qtree[i,1:i]*(ptree[i+1,1:i]+citree[i+1,1:i])+
+                  (1-qtree[i,1:i])*(ptree[i+1,2:i1]+citree[i+1,2:i1]))/(1+ztree[i,1:i]/m)^deltm
+}
+prt.tree(ptree)
+
+# d
+K <- 100                               
+Nopt <- 6                         
+ECall = matrix(0,nrow=Nopt+1, ncol=Nopt+1)   
+for (j in (1:(Nopt+1))) {
+  ECall[Nopt+1,j] <- max( 0,ptree[Nopt+1,j]-K )
+}
+for (i in Nopt:1) {
+  i1 = i+1
+  ECall[i,1:i] = (qtree[i,1:i]*ECall[i+1,1:i]+(1-qtree[i,1:i])*ECall[i+1,2:i1])/(1+ztree[i,1:i]/m)^deltm
+}
+prt.tree(ECall,4)
+
+# e
+ECall <- cbind(ECall, c(0,0,0,0,0,0,0), c(0,0,0,0,0,0,0), c(0,0,0,0,0,0,0), c(0,0,0,0,0,0,0))
+ECall <- rbind(ECall, c(0,0,0,0,0,0,0,0,0,0,0), c(0,0,0,0,0,0,0,0,0,0,0), c(0,0,0,0,0,0,0,0,0,0,0), c(0,0,0,0,0,0,0,0,0,0,0))
+callable <- ptree -ECall
+prt.tree(callable)
+```
+

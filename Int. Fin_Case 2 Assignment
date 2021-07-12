@@ -1,0 +1,198 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages("plotrix")
+library(plotrix)
+```
+
+
+```{r}
+View(Data$dt1)
+
+```
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+you ar
+```{r}
+head(dt1)
+```
+
+```{r}
+head(dt2)
+```
+
+```{r}
+head(dt3)
+```
+
+```{r}
+#Excess Returns of each trading strategy 
+
+Market.cap.weighted_E <- dt1$Market.cap.weighted - dt1$RF
+Equal.weighted_E <- dt1$Equal.weighted - dt1$RF
+Inverse.Vol_E <- dt1$Inverse.Vol - dt1$RF
+MVP.weighted_E <- dt1$MVP.weighted - dt1$RF
+FundamentlaComposite_E <- dt1$FundamentalComposite - dt1$RF
+Mkt.RF_E <- dt1$Mkt.RF - dt1$RF
+SMB_E <- dt1$SMB - dt1$RF
+HML_E <- dt1$HML - dt1$RF
+MOM_E <- dt1$MOM - dt1$RF
+Berkshire.Hathaway.A_E <- dt2$Berkshire.Hathaway.A - dt2$RF
+
+```
+
+```{r}
+#Annualized mean return for each strategy
+
+Avg_ret_Market.cap.weighted <- mean(Market.cap.weighted_E)*12
+Avg_ret_Equal.weighted <- mean(Equal.weighted_E)*12
+Avg_ret_Inverse.Vol <- mean(Inverse.Vol_E)*12
+Avg_ret_MVP.weighted <- mean(MVP.weighted_E)*12
+Avg_ret_FundamentalComposite <- mean(FundamentlaComposite_E)*12
+Avg_ret_Mkt.RF <- mean(Mkt.RF_E)*12
+Avg_ret_SMB <- mean(SMB_E)*12
+Avg_ret_HML <- mean(HML_E)*12
+Avg_ret_MOM <- mean(MOM_E)*12
+Avg_ret_Berkshire.Hathaway.A <- mean(Berkshire.Hathaway.A_E)*12
+
+Avg_ret_Market.cap.weighted
+Avg_ret_Equal.weighted
+Avg_ret_Inverse.Vol
+Avg_ret_MVP.weighted
+Avg_ret_FundamentalComposite
+Avg_ret_Mkt.RF
+Avg_ret_SMB
+Avg_ret_HML
+Avg_ret_MOM
+Avg_ret_Berkshire.Hathaway.A
+```
+
+```{r}
+#Annualized Standard Deviation of Excess Returns 
+
+SD_Market.cap.weighted <- sd(Market.cap.weighted_E)*sqrt(12)
+SD_Equal.weighted <- sd(Equal.weighted_E)*sqrt(12)
+SD_Inverse.Vol <- sd(Inverse.Vol_E)*sqrt(12)
+SD_MVP.weighted <- sd(MVP.weighted_E)*sqrt(12)
+SD_FundamentalComposite <- sd(FundamentlaComposite_E)*sqrt(12)
+SD_Mkt.RF <- sd(Mkt.RF_E)*sqrt(12)
+SD_SMB <- sd(SMB_E)*sqrt(12)
+SD_HML <- sd(HML_E)*sqrt(12)
+SD_MOM <- sd(MOM_E)*sqrt(12)
+sD_Berkshire.Hathaway.A <- sd(Berkshire.Hathaway.A_E)*sqrt(12)
+
+SD_Market.cap.weighted
+SD_Equal.weighted
+SD_Inverse.Vol
+SD_MVP.weighted
+SD_FundamentalComposite
+SD_Mkt.RF
+SD_SMB
+SD_HML
+SD_MOM
+sD_Berkshire.Hathaway.A
+```
+
+```{r}
+#Shapre Ratio for each strategy 
+
+sharpe_Market.cap.weighted <- Avg_ret_Market.cap.weighted/SD_Market.cap.weighted
+sharpe_Equal.weighted <- Avg_ret_Equal.weighted / SD_Equal.weighted
+sharpe_Inverse.Vol <- Avg_ret_Inverse.Vol / SD_Inverse.Vol
+sharpe_MVP.weighted <- Avg_ret_MVP.weighted / SD_MVP.weighted
+sharpe_FundamentalComposite <- Avg_ret_FundamentalComposite / SD_FundamentalComposite
+sharpe_Mlt.RF <- Avg_ret_Mkt.RF / SD_Mkt.RF
+sharpe_SMB <- Avg_ret_SMB / SD_SMB
+sharpe_HML <- Avg_ret_HML / SD_HML
+sharpe_MOM <- Avg_ret_MOM / SD_MOM
+shapre_Berkshire.Hathaway.A <- Avg_ret_Berkshire.Hathaway.A / sD_Berkshire.Hathaway.A
+
+sharpe_Market.cap.weighted
+sharpe_SMB
+
+```
+
+
+```{r}
+#Market cap weighted regression
+
+m1 <- lm(Market.cap.weighted_E ~ dt1$Mkt.RF, data = dt1) 
+summary(m1)
+SE <- coef(summary(m1))[,"Std.Error"]
+SE
+```
+
+
+```{r}
+#Equal Weighted regression 
+m2 <- lm(Equal.weighted_E ~ dt1$Mkt.RF, data = dt1)
+summary(m2)
+```
+```{r}
+# Inverse Vol Regression
+m3 <- lm(Inverse.Vol_E ~ dt1$Mkt.RF, data = dt1)
+summary(m3)
+```
+
+```{r}
+m4 <-lm(MVP.weighted_E ~ dt1$Mkt.RF, data = dt1)
+summary(m4)
+```
+
+```{r}
+m5 <- lm(FundamentlaComposite_E ~ dt1$Mkt.RF, data = dt1)
+summary(m5)
+
+```
+
+```{r}
+market_var <- SD_Mkt.RF^2
+market_var
+
+```
+
+```{r}
+############################################################################################################################################################################################################################################################################################
+```
+
+
+```{r}
+#market cap regression
+m_1 <- lm(Market.cap.weighted_E ~ dt1$Mkt.RF + SMB_E + HML_E + MOM_E, data = dt1)
+summary(m_1)
+```
+
+```{r}
+#equal weight regression
+m_2 <- lm(Equal.weighted_E ~ dt1$Mkt.RF + SMB_E + HML_E + MOM_E, data = dt1)
+summary(m_2)
+```
+
+```{r}
+#inverse vol. regression
+m_3 <- lm(Inverse.Vol_E ~ dt1$Mkt.RF + SMB_E + HML_E + MOM_E, data = dt1)
+summary(m_3)
+```
+
+```{r}
+#MVP regression
+m_4 <- lm(MVP.weighted_E ~ dt1$Mkt.RF + SMB_E + HML_E + MOM_E, data = dt1)
+summary(m_4)
+```
+
+```{r}
+#fundamental composite regression
+m_5 <- lm(FundamentlaComposite_E ~ dt1$Mkt.RF + SMB_E + HML_E + MOM_E, data = dt1)
+summary(m_5)
+```
+

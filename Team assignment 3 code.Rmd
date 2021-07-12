@@ -1,0 +1,214 @@
+---
+title: "FRM Team Assignment 3"
+author: ""
+date: "5/15/2021"
+output: html_document
+---
+
+##Step 1
+#rates
+```{r}
+# download weekly national 30Y mortgage rate from FRED
+# convert to monthly data
+
+library(data.table)
+library(quantmod)
+library(zoo)
+library(survival)
+
+# get national 30Y mortgage rates from FRED
+mrates <- getSymbols("MORTGAGE30US",src="FRED",auto.assign=FALSE)
+mrates <- na.omit(mrates)
+str(mrates)
+data <- data.table(Date=index(mrates),RT=mrates)
+names(data) <- c("Date","RT")
+z  <- rollapply(data$RT,4,mean)
+data$ma4 <- c(NA,NA,NA,z)
+z <- to.period(data,
+               period='months',
+               OHLC = FALSE)
+rates <- data.table(yearmon = index(z),
+                    rate    = z$ma4)
+names(rates) <- c("yearmon","rate")
+rates$yearmon <- as.integer(floor(as.numeric(as.character(format(rates$yearmon,"%Y%m%d")))/100))
+setorderv(rates,c("yearmon"))
+
+save(rates,file="mortgage_rates.rda")
+rates
+```
+
+
+#ue_msa
+```{r}
+# read unemployment rates and create MSA unemployment rate 
+library(zoo)
+
+url1 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU00-04"
+url2 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU05-09"
+url3 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU10-14"
+url4 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU15-19"
+url5 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU90-94"
+url6 <- "https://download.bls.gov/pub/time.series/la/la.data.0.CurrentU95-99"
+
+dat1 <- fread(url1)
+dat2 <- fread(url2)
+dat3 <- fread(url3)
+dat4 <- fread(url4)
+dat5 <- fread(url5)
+dat6 <- fread(url6)
+
+UE <- rbind(dat1,dat2,dat3,dat4,dat5,dat6)
+UE[, footnote_codes := NULL]
+UE[, yearmon := as.integer(year)*100 + as.integer(substr(period,2,3))]
+
+UE[, c("year","period") := NULL]
+names(UE) <- c("series_id","ue","yearmon")
+
+MSA <- fread("C:/Users/Floris/Downloads/UE_MSACode.csv")
+ue_msa <- UE[series_id %in% MSA$series_id,]
+ue_msa <- ue_msa[MSA, on = "series_id"]
+ue_msa[, c("MSA_name") := NULL]
+ue_msa[, ue := as.numeric(ue)]
+ue_msa[, yearmon := as.integer(yearmon)]
+ue_msa[, series_id := NULL]
+setorderv(ue_msa,c("MSA","yearmon"))
+ue_msa
+```
+
+#hpi_msa
+```{r}
+# read Freddie monthly HPI
+hpi_master <- fread("http://www.freddiemac.com/fmac-resources/research/docs/fmhpi_master_file.csv")
+hpi_master[, yearmon := Year*100+Month]
+hpi_msa   <- hpi_master[GEO_Type=="CBSA",]
+setorderv(hpi_msa,c("GEO_Code","yearmon"))
+hpi_msa[, c("GEO_Type","GEO_Name","Index_SA","Year","Month") := NULL]
+names(hpi_msa) <- c("MSA","hpi","yearmon")
+hpi_msa[, MSA := as.integer(MSA)]
+hpi_msa[, difl := c(0,diff(log(hpi))),by="MSA"]
+hpi_msa[, spi := sqrt(12)*c(rep(0,23),rollapply(difl,24,sd)), by="MSA"]
+hpi_msa[, difl := NULL]
+
+save(hpi_msa,file="hpi_msa.rda")
+hpi_msa
+```
+
+##Step 2
+```{r}
+load("C:/Users/Floris/Downloads/TeamAssignment3_cdata_Q3.rda")
+Data_C$MSA <- as.integer(Data_C$MSA)
+Data_C <- Data_C[Data_C$MSA %in% ue_msa$MSA,]
+Data_C <- Data_C[Data_C$MSA %in% hpi_msa$MSA,]
+#all loans have values in CSCORE_B, ORIG_VAL, ORIG_AMT, ORIG_RT columns
+#no need to remove NAs
+Data_C$ORIG_DTE<-as.integer(format(Data_C$ORIG_DTE, "%Y%m"))
+Data_C <- merge(Data_C,rates[,c(1,2)],by.x = "ORIG_DTE",by.y = "yearmon",all.x = TRUE)
+Data_C <- merge(Data_C,hpi_msa,by.x = c("ORIG_DTE","MSA"),by.y = c("yearmon","MSA"),all.x = TRUE)
+colnames(Data_C)[76] <- "hpi0"
+Data_C$spread <- Data_C$ORIG_RT-Data_C$rate
+variables <- c("LOAN_ID","OLTV","CSCORE_B","spread","ORIG_VAL","hpi0","MSA", "ORIG_RT","NUM_BO","PURPOSE","PROP_TYP","OCC_STAT","DTI","FTHB_FLG")
+Data_C <- Data_C[,..variables]
+Data_C
+```
+
+##Step 3
+```{r}
+load("TeamAssignment3_pdata_Q3.rda")
+colnames(Data_P)[2] <- "yearmon"
+Data_P$yearmon <- as.integer(format(Data_P$yearmon,"%Y%m"))
+Data_P <- Data_P[Data_P$LOAN_ID %in% Data_C$LOAN_ID,]
+data3 <- merge(Data_P,Data_C,by="LOAN_ID", all.x=TRUE)
+data3 <- data3[order(LOAN_ID,yearmon),]
+data3$status <- ifelse(data3$Zero.Bal.Code %in% c("02","03","09","15"),"default", ifelse(data3$Zero.Bal.Code %in% c("01"),"prepaid","censored"))
+```
+
+
+##Step 4
+```{r}
+data3 <-merge(data3,rates,by="yearmon")
+data3$cvr <- data3$ORIG_RT/data3$rate
+```
+
+##Step 5
+```{r}
+data3 <-merge(data3,ue_msa,by = c("yearmon","MSA"))
+```
+
+##Step 6
+```{r}
+data3 <-merge(data3,hpi_msa,by = c("yearmon","MSA"))
+data3$val <- data3$ORIG_VAL*data3$hpi/data3$hpi0
+data3$pneq <- pnorm(log(data3$LAST_UPB/data3$val)/(100*data3$spi))
+```
+
+##Step 7
+```{r}
+data3$start = data3$Loan.Age
+data3$end = data3$Loan.Age + 1
+```
+
+##Estimation
+```{r}
+default_1 = coxph(formula = Surv(start, end, status == "default") ~ CSCORE_B + pneq, data = data3, ties = "efron")
+default_2 = coxph(formula = Surv(start, end, status == "default") ~ CSCORE_B + pneq+OLTV+spread+ue+cvr+NUM_BO+PURPOSE+PROP_TYP+OCC_STAT+DTI+FTHB_FLG, data = data3, ties = "efron")
+default_3 = coxph(formula = Surv(start, end, status == "default") ~ CSCORE_B + pneq + OLTV + spread, data = data3, ties = "efron")
+default_4 = coxph(formula = Surv(start, end, status == "default") ~ CSCORE_B + pneq+OLTV+spread+ue+cvr+PURPOSE+NUM_BO + PROP_TYP+OCC_STAT+DTI, data = data3, ties = "efron")
+
+
+default_5 = coxph(formula = Surv(start, end, status == "default") ~ CSCORE_B + pneq + OLTV + spread + ue + cvr + PURPOSE + PROP_TYP + OCC_STAT + FTHB_FLG, data = data3, ties = "efron")
+
+AIC(default_1)
+AIC(default_2)
+AIC(default_3)
+AIC(default_4)
+AIC(default_5)
+
+plot(cox.zph(default_5))
+
+prepaid = coxph(formula = Surv(start, end, status == "prepaid") ~ CSCORE_B + pneq + OLTV + spread + ue + cvr + PURPOSE + PROP_TYP + OCC_STAT + FTHB_FLG, data = data3, ties = "efron")
+
+AIC(prepaid)
+```
+
+##Prediction
+```{r}
+ndata <- data.table(start=c(1:60))
+ndata[, CSCORE_B := 720]
+ndata[, pneq := 0]
+ndata[, OLTV := median(data3$OLTV) ]
+ndata[, spread := median(data3$spread)]
+ndata[, ue := median(data3$ue)]
+ndata[, cvr := median(data3$cvr)]
+ndata[, LOAN_ID := median(data3$LOAN_ID)]
+ndata[, PURPOSE := median(data3$PURPOSE)]
+ndata[, NUM_BO := median(data3$NUM_BO)]
+ndata[, end := ndata$start+1]
+ndata[, status := median(data3$status)]
+ndata[, PROP_TYP := median(data3$PROP_TYP)]
+ndata[, OCC_STAT := median(data3$OCC_STAT)]
+ndata[, FTHB_FLG := median(data3$FTHB_FLG)]
+```
+
+##default predict
+```{r}
+library(ggplot2)
+hvec <- predict(default_5,newdata=ndata,type="expected")
+df <- data.frame(t=c(1:60),h=hvec)
+df$H <- cumsum(df$h)
+df$surv<- exp(-df$H)
+df$cumdef<- 1-df$surv
+ggplot(df,aes(x=t,y=cumdef))+geom_line()
+```
+
+##prepayment predict
+```{r}
+hvec2 <- predict(prepaid,newdata=ndata,type="expected")
+df2 <- data.frame(t=c(1:60),h=hvec2)
+df2$H <- cumsum(df2$h)
+df2$surv<- exp(-df2$H)
+df2$cumpre<- 1-df2$surv
+ggplot(df2,aes(x=t,y=cumpre))+geom_line()
+```
+
+
+

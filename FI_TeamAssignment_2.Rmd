@@ -1,0 +1,345 @@
+---
+title: "Team Assignment 2"
+output: html_document
+---
+
+```{r}
+
+```
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(jrvFinance)
+```
+
+
+
+```{r}
+#Define date function
+DATE <- function(yyyy,mm,dd) {
+  dte  <- as.Date(sprintf("%i-%i-%i",yyyy,mm,dd),format="%Y-%m-%d")
+  return(dte)
+}
+
+#Create Bond Convexity Function 
+bond.convexity <- function(settle,mature,coupon,freq=2,yield,convention) {
+  z  <- as.data.frame(bond.TCF(settle,mature,coupon,freq,convention))
+  cf <- z$cf
+  t  <- z$t
+  r  <- yield
+  m  <- freq
+  return ( 1/sum( cf / (1+r/m)^(t*m) ) * sum( t * (t+1/m) * cf / (1 + r/m)^(t*m+2) ) )
+}
+
+
+
+#DEfine yield funciton
+zcb.yield<-function(zcb.price,ttm,freq=2) 
+{return( freq* ( (100/zcb.price)^(1/(freq*ttm)) -1 ) )}
+```
+
+```{r}
+#get Data
+# ------------------------------------------------------------------------------------------------------------
+
+
+#DATE ISSUE 
+TAQ1 <- read.csv("TeamAssignment2_Q1.csv")
+View(TAQ1)
+class(TAQ1$maturity)
+
+class(TAQ1)
+
+Date_M <- TAQ1$maturity
+TAQ1$Date_M <- as.Date(Date_M, "%Y-%m-%d")
+class(Date_M)
+cbind(TAQ1, Date_M)
+
+
+
+```
+
+
+```{r}
+#-----------------------------------------
+#Question 1 
+
+#A) Modified Duration and Convexity
+
+settle <- DATE(2020,12,16)
+
+#Get YTM FOR EACH BOND
+
+TAQ1$YTM <- 0
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$YTM[i] <- bond.yield(settle,TAQ1$Date_M[i],TAQ1$coupon[i], freq = 2, TAQ1$clean.price[i], convention = "ACT/ACT", comp.freq = 2)
+}
+
+View(TAQ1)
+
+#calculate Modified duration of the bonds
+TAQ1$Dmod <- 0
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$Dmod[i] <- bond.duration(settle,TAQ1$Date_M[i],TAQ1$coupon[i], freq = 2, TAQ1$YTM[i], convention = "ACT/ACT", modified = TRUE, comp.freq = 2)
+}
+
+View(TAQ1)
+
+TAQ1$convex <- 0
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$convex[i] <- bond.convexity(settle,TAQ1$Date_M[i],TAQ1$coupon[i], freq = 2, TAQ1$YTM[i], convention = "ACT/ACT")
+}
+
+View(TAQ1)
+
+------------------------------------------------
+
+```
+
+```{r}
+# Question 1B
+
+
+# SOlve for DURATION of the Portfolio
+# get market values first 
+
+TAQ1$market_value <- (TAQ1$clean.price * TAQ1$face.value) / 100
+View(TAQ1)
+
+
+Total_market_value <- sum(TAQ1$market_value)
+
+TAQ1$weights <- 0
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$weights[i] <- TAQ1$market_value[i] / Total_market_value
+}
+
+View(TAQ1)
+
+#Modified duration of portfolio is the weighted average of each modified duration with the weights coming from the market value weights 
+
+TAQ1$Dmod_weighted <- TAQ1$Dmod * TAQ1$weights
+View(TAQ1)
+
+Dmod_1 <- sum(TAQ1$Dmod_weighted)
+```
+
+```{r}
+# Solve for Convexity of the Portfolio 
+
+TAQ1$convex_weighted <- TAQ1$weights * TAQ1$convex
+
+convexity <- sum(TAQ1$convex_weighted)
+
+
+
+
+# END 1B
+#-------------------------------------------------------------
+```
+
+```{r}
+# Question 1C
+
+
+# first order approximation of dP/P
+-TAQ1$Dmod * 0.001
+```
+
+
+```{r}
+# Question 1D
+# 2nd order approximation of dp/p
+-TAQ1$Dmod * 0.001 + 0.5 * convexity * 0.001^2
+
+```
+```{r}
+# Question 1E  
+
+ychg <- 0.001
+TAQ1$YTM_10bp  <- TAQ1$YTM + ychg
+
+
+# find actual price change of each bond
+TAQ1$bond.price_10bp <- c()
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$bond.price_10bp[i] <- bond.price(settle, TAQ1$Date_M[i], TAQ1$coupon[i], freq = 2, TAQ1$YTM_10bp[i], convention = "ACT/ACT", comp.freq = 2)
+}
+# New market value of bonds
+TAQ1$market_value_10pb <- (TAQ1$bond.price_10bp * TAQ1$face.value) / 100
+View(TAQ1)
+
+MV_1 <- sum(TAQ1$market_value)
+MV_2 <- sum(TAQ1$market_value_10pb)
+
+
+# MArket value percentage change between MV after 10 bp increase 
+market_value_percent_Change <- (MV_2 - MV_1)/MV_1
+market_value_percent_Change
+
+-----------------------------------------------------------------------
+```
+
+
+
+```{r}
+#QUESTION 1F
+head(TAQ1)
+
+```
+```{r}
+YTM_13 <- TAQ1[1, 6] + .0013
+YTM_10 <- TAQ1[2, 6] + .0010
+YTM_9 <- TAQ1[3, 6] + .0009
+YTM_8 <- TAQ1[4, 6] + .0008
+
+TAQ1$YTM_3 <- c(YTM_13, YTM_10, YTM_9, YTM_8)
+
+
+
+
+```
+
+
+```{r}
+# find actual price change of each bond
+TAQ1$bond.price_3 <- c()
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$bond.price_3[i] <- bond.price(settle, TAQ1$Date_M[i], TAQ1$coupon[i], freq = 2, TAQ1$YTM_3[i], convention = "ACT/ACT", comp.freq = 2)
+}
+
+head(TAQ1)
+```
+```{r}
+# New market value of bonds
+TAQ1$market_value_3 <- (TAQ1$bond.price_3 * TAQ1$face.value) / 100
+
+
+MV_1 <- sum(TAQ1$market_value)
+MV_3 <- sum(TAQ1$market_value_3)
+
+
+# MArket value percentage change between MV after individual bp increase 
+market_value_percent_Change_3 <- (MV_3 - MV_1)/MV_1
+market_value_percent_Change_3
+```
+
+```{r}
+
+# SOlve for DURATION of the Portfolio
+# get market values first 
+
+
+
+TAQ1$weights_3 <- 0
+for (i in c(1:nrow(TAQ1))) {
+  TAQ1$weights_3[i] <- TAQ1$market_value_3[i] / MV_3
+}
+
+View(TAQ1)
+
+#Modified duration of portfolio is the weighted average of each modified duration with the weights coming from the market value weights 
+
+TAQ1$Dmod_weighted_3 <- TAQ1$Dmod * TAQ1$weights_3
+
+
+Dmod_3 <- sum(TAQ1$Dmod_weighted_3)
+Dmod_3
+```
+
+```{r}
+# Solve for Convexity of the Portfolio 
+
+TAQ1$convex_weighted_3 <- TAQ1$weights_3 * TAQ1$convex
+
+convexity_3 <- sum(TAQ1$convex_weighted_3)
+```
+
+
+```{r}
+# uses of modified duration and convexity
+
+approx_1 <- -Dmod_1 * -0.008879982 + 0.5 * convexity * -0.008879982^2
+approx_3 <- -Dmod_3 * -0.008879982 + 0.5 * convexity_3 * -0.008879982^2
+approx_1
+approx_3
+```
+
+
+
+```{r}
+#QUESTION 3
+getwd()
+TAQ3 <- read.csv("TeamAssignment2_Q3.csv")
+head(TAQ3)
+```
+
+```{r}
+Date <- TAQ3$maturity
+Date <- as.Date(Date, "%m/%d/Y")
+class(Date)
+TAQ3 <- cbind(TAQ3, Date)
+head(TAQ3)
+TAQ3 <- TAQ3[ , 1:3]
+head(TAQ3)
+
+```
+
+```{r}
+# Calculate TTM for maturity dates
+
+TAQ3$TTM <- as.numeric(TAQ3$Date - settle)/365
+head(TAQ3)
+```
+
+```{r}
+TAQ3$price <- c(100, 100, 100, 100, 100, 100, 100, 100, 100, 100)
+head(TAQ3)
+```
+
+```{r}
+# Caclulate yield 
+
+TAQ3$YTM <- c()
+for (i in c(1:nrow(TAQ3))) {
+  TAQ3$YTM[i] <- bond.yield(settle, TAQ3$Date[i], TAQ3$par.rate[i], freq = 2, TAQ3$price[i], convention = "ACT/ACT", comp.freq = 2)
+}
+
+head(TAQ3)
+```
+
+```{r}
+spline_data <- read.csv("Xout_Dates.csv")
+
+
+
+
+tmp <- as.data.frame(TAQ3)
+
+# spline interpolation
+spline_df <- as.data.frame(spline(tmp$x, tmp$y, xout = tmp$x, method="natural") )
+ggplot(spline_df,aes(x,y*100)) +
+  geom_point(dat = tmp, aes(x,y*100), alpha = 0.2, col = "red") +
+  geom_line(col = "blue") +
+  ggtitle("spline()") +
+  xlab("ttm") +
+  ylab("yield (%)") 
+
+
+```
+
+
+```{r}
+#Calculate discount factors 
+
+
+data$disfac <- rep(1,nrow(data))
+data$disfac[1] <- data$pfull[1]/(100+data$coupon[1]*100/2)
+for (i in 2:nrow(data)) {
+  cumdf <- sum(data$disfac[1:i-1])
+  data$disfac[i] <- ( data$pfull[i] - data$coupon[i]*100/2 * cumdf ) / 
+    (100 + data$coupon[i]*100/2 )
+}
+```
+

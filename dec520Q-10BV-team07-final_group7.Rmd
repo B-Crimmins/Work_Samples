@@ -1,0 +1,331 @@
+---
+title: "final_modeling"
+author: "Group7"
+date: "11/14/2020"
+output: html_document
+---
+# EDA
+```{r, echo = FALSE}
+# set.seed(100)
+library(infotheo)
+library(pROC)
+library(randomForest)
+library(e1071)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r, echo = FALSE}
+cardio_data <- read.csv("data/cardio_train.csv", sep=';', header = TRUE)
+cardio_data2 = cardio_data %>%
+  mutate(cardioOrNOT = ifelse(cardio == 0, "No", "Yes"))
+cardio_data2$age <- as.integer(cardio_data2$age / 365)
+cardio_data2$gender <- as.character(cardio_data2$gender)
+
+# Remove Outliers
+drop_outlier <- function(data, column){
+  lower <- quantile(data[,column], 0.025) 
+  upper <- quantile(data[,column], 0.975)
+  data <- data[-which(data[,column] < lower | data[,column] > upper), ]
+return(data)
+}
+
+for(i in c("age", "height", "weight", "ap_hi", "ap_lo")){
+  cardio_data2 <- drop_outlier(cardio_data2, i)
+}
+```
+
+## Age
+```{r, echo = FALSE}
+# Age
+ggplot(cardio_data2, aes(x=age, fill=cardioOrNOT)) +
+  geom_bar(alpha=0.7, position="dodge") +
+  labs(title="Histogram of Age") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) 
+
+# cardioOrNOT vs. Age
+ggplot(cardio_data2, aes(x=cardioOrNOT, y=age, fill=cardioOrNOT)) +
+  geom_boxplot() + 
+  labs(title ="cardioOrNOT vs. Age") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+People older than 55 are more exposed to CVD.  
+
+## Gender
+```{r, echo = FALSE}
+ggplot(cardio_data2, aes(x=gender, fill=cardioOrNOT)) +
+  geom_bar(position = "dodge") + 
+  labs(title ="cardioOrNOT vs Gender") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") + 
+  scale_fill_manual(values=c("#E69F00", "#56B4E9")) + theme_minimal()
+```
+
+More female have CVD then males.  
+
+## Weight & Height
+```{r, echo = FALSE}
+# Weight
+ggplot(cardio_data2, aes(x=weight)) +
+  geom_bar(color="#6482B9") +
+  labs(title="Histogram of Weight") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+
+# Height
+ggplot(cardio_data2, aes(x=height)) +
+  geom_bar(fill="#6482B9") +
+  labs(title="Histogram of Height") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+## Systolic Blood Pressure & Diastolic Blood Pressure
+```{r, echo = FALSE}
+a <- cardio_data2 %>%
+  gather("variables", "value", -"id", -"age", -"gender", -"height", -"weight", -"cholesterol", -"gluc", -"smoke", -"alco", -"active", -"cardio", -"cardioOrNOT")
+
+# ap_hi vs. ap_lo
+ggplot(a, aes(x=variables, y=value, fill = variables)) +
+  geom_boxplot() + 
+  labs(title ="cardioOrNOT vs. Systolic Blood Pressure") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+```
+
+
+## Categorical
+```{r, echo = FALSE}
+# Cholesterol
+ggplot(cardio_data2, aes(x=cholesterol, fill=cardioOrNOT)) +
+  geom_bar(position = "fill", alpha=0.9) +
+  labs(title="Histogram of Cholesterol") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) +
+  scale_fill_brewer(palette="Paired")+
+  theme_minimal()
+
+# Glucose
+ggplot(cardio_data2) +
+  geom_bar(aes(x=gluc, fill=cardioOrNOT), alpha=0.9, position = "fill") +
+  labs(title="Histogram of Glucose") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) + 
+  scale_fill_manual(values=c('#999999','#E69F00')) + 
+  theme_minimal()
+
+# Smoke
+ggplot(cardio_data2) +
+  geom_bar(aes(x=as.character(smoke), fill=cardioOrNOT), alpha=0.9, position = "fill") +
+  labs(title="Histogram of Smoke", x = "Smoke") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) + 
+  scale_fill_brewer(palette="Reds") + 
+  theme_minimal()
+
+# Alco
+ggplot(cardio_data2) +
+  geom_bar(aes(x=as.character(alco), fill=cardioOrNOT), alpha=0.9, position = "fill") +
+  labs(title="Histogram of Alco", x = "Alcohol") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) + 
+  scale_fill_brewer(palette="Blues") + 
+  theme_minimal()
+
+# Active
+ggplot(cardio_data2) +
+  geom_bar(aes(x=as.character(active), fill=cardioOrNOT), alpha=0.9, position = "fill") +
+  labs(title="Histogram of Pysical Activity", x = "Activity") +
+  theme(legend.position="top", plot.title=element_text(hjust=0.5)) + 
+  scale_fill_brewer(palette="Purples") + 
+  theme_minimal()
+```
+
+## Two dimentional
+```{r, echo = FALSE}
+b = cardio_data2 %>%
+  mutate(BMI = round(weight / (height/100)^2), 2)
+ggplot(b) +
+  geom_boxplot(aes(x=gender, y=BMI, fill = as.character(alco))) + 
+  labs(title ="Gender vs. BMI with cardioOrNOT") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position = "none") + 
+  facet_grid(~cardioOrNOT) + 
+  scale_fill_manual(values=c('#DBEA20','#E69F00')) +
+  theme_light()
+```
+
+
+## Correlation
+```{r, echo = FALSE}
+library(corrplot)
+drops <- c("id","cholesterol","gluc","smoke", "alco", "active", "cardioOrNOT", "gender")
+cardio_data2_corr <- cardio_data2[,!(names(cardio_data2) %in% drops)]
+# Correlation
+res <- cor(cardio_data2_corr)
+round(res, 2)
+# Correlation Plot
+corrplot(res, type="upper")
+```
+
+# Model
+```{r, echo = FALSE}
+set.seed(100)
+library(infotheo)
+library(pROC)
+library(randomForest)
+library(e1071)
+```
+
+
+```{r, echo = FALSE}
+cardio_data <- read.csv("data/cardio_train.csv", sep=';', header = TRUE)
+#summary(cardio_data)
+#View(cardio_data)
+head(cardio_data)
+str(cardio_data)
+summary(cardio_data)
+table(duplicated(cardio_data$id))
+cardio_data <- cardio_data[, c(-1)]
+head(cardio_data)
+with(cardio_data, table(gender))
+with(cardio_data, table(cholesterol))
+with(cardio_data, table(gluc))
+with(cardio_data, table(smoke))
+with(cardio_data, table(alco))
+with(cardio_data, table(active))
+with(cardio_data, table(cardio))
+
+cardio_data$age <- as.integer(cardio_data$age / 365)
+hist(cardio_data$age)
+
+
+hist(cardio_data$age)
+hist(cardio_data$height)
+hist(cardio_data$weight)
+hist(cardio_data$ap_hi)
+hist(cardio_data$ap_lo)
+
+
+boxplot(cardio_data$age, main="age")
+boxplot(cardio_data$height, main = "height")
+boxplot(cardio_data$weight,main="weight")
+boxplot(cardio_data$ap_hi,main ="ap_hi")
+boxplot(cardio_data$ap_lo, main = "ap_lo")
+```
+
+```{r, echo = FALSE}
+init_data <- cardio_data
+head(init_data)
+drop_outlier <- function(data, column){
+lower <- quantile(data[,column], 0.01) 
+upper <- quantile(data[,column], 0.99)
+data <- data[-which(data[,column] < lower | data[,column] > upper), ]
+return(data)
+}
+
+for(i in c("age", "height", "weight", "ap_hi", "ap_lo")){
+  cardio_data <- drop_outlier(cardio_data, i)
+}
+#View(cardio_data)
+head(cardio_data)
+head(init_data)
+```
+
+```{r, echo = FALSE}
+# split into train set and test set
+#View(cardio_data)
+spilt_row <-  sample(2, nrow(cardio_data), replace=TRUE, prob=c(0.8,0.2))
+train <- cardio_data[spilt_row == 1, ]
+test <- cardio_data[spilt_row == 2, ]
+#View(train)
+#View(test)
+```
+
+```{r, echo = FALSE}
+get_metirc <- function(result){
+  metric_df <- data.frame(row.names = c("accuracy", "precision", "recall", "auc"))
+  sample_num <- length(result$actual)
+  # confusion matrix
+  confusion_matrix <- table(result$predict, result$actual)
+  # precision / recall / accuracy
+  metric_df["precision", "value"] <- confusion_matrix[2, 2] / sum(result$predict)
+  metric_df["recall", "value"] <- confusion_matrix[2, 2] / sum(result$actual)
+  metric_df["accuracy", "value"] <- (confusion_matrix[1,1] + confusion_matrix[2,2]) / sample_num
+  # roc curve
+  model_roc <- roc(result$actual, result$predict) 
+  plot(model_roc, print.auc=TRUE, auc.polygon = TRUE,legacy.axes = TRUE, max.auc.polygon=TRUE, 
+       auc.polygon.col="skyblue", print.thres=TRUE,main = "ROC")
+  # auc
+  metric_df["auc", "value"] <- model_roc$auc
+  return(metric_df)
+  
+}
+```
+
+
+## Logistic Regression
+```{r, echo = FALSE}
+# logistic regression
+# build inital full model
+set.seed(200)
+model_full <- glm(formula = cardio ~ ., data = cardio_data, family=binomial(link='logit'))
+# auto choose by AIC value 
+model_final <- step(model_full, direction = 'both')
+summary(model_final)
+#summary(model_final2)
+# importance of variables, the more longer the more important -1 means delete intercept to show
+barplot(abs(model_final$coefficients[-1]))
+lr_predict_prob <- predict(model_final, type = "response", newdata = init_data)
+lr_result <- data.frame(actual = init_data$cardio, predict = ifelse(lr_predict_prob > 0.5, 1, 0))
+lr_metric <- get_metirc(lr_result)
+lr_metric
+```
+
+## Random Forest
+```{r, echo = FALSE}
+# randomforest model
+library(randomForest)
+model_rf <- randomForest(cardio ~ ., data = cardio_data,mtry=2,ntree = 200, importance = TRUE)
+plot(model_rf,col=1:1)
+# importance of variables, the more longer the more important
+summary(model_rf)
+barplot(model_rf$importance[,1])
+model_rf
+rf_predict_prob <- predict(model_rf, type = "response", newdata = init_data)
+rf_result <- data.frame(actual = init_data$cardio, predict = ifelse(rf_predict_prob > 0.5, 1, 0))
+rf_metric <- get_metirc(rf_result)
+rf_metric
+
+```
+
+## Linear SVM
+```{r, echo = FALSE}
+library(lattice)
+library(caret)
+## linear svm
+set.seed(100)
+model_svm<-svm(cardio~., data= cardio_data,kernel="linear",scale=TRUE,type="C")
+#tObj<-tune.svm(cardio~.,data=train,type="C-classification",kernel="radial",    cost=c(0.001,0.01,0.1,1,5,10,100,1000),gamma=c(0.5,1,2,3,4),scale=FALSE)
+#print(model_svm)
+summary(model_svm)
+svm_predict_prob<-predict(model_svm,newdata = init_data,type="response")
+q<-mean(init_data$cardio != svm_predict_prob)
+q
+
+obs_p_svm = data.frame(prob=svm_predict_prob,obs=init_data$cardio)
+
+t4<-table(init_data$cardio,svm_predict_prob,dnn=c("actual","predict"))
+t4
+(t4[1,1]+t4[2,2])/(sum(t4))
+t4[2,2]/(t4[1,2]+t4[2,2])
+t4[1,1]/(t4[1,1]+t4[2,1])
+```
+
+## Linear SVM
+```{r, echo = FALSE}
+## nonlinear svm
+model_svm2<-svm(cardio~., data= cardio_data)
+summary(model_svm2)
+print(model_svm2)
+
+svm_predict_prob2<-predict(model_svm2,newdata = init_data,type="response")
+svm_result2<- data.frame(actual = init_data$cardio, predict = ifelse(svm_predict_prob2 > 0.5, 1, 0))
+svm_metric2 <- get_metirc(svm_result2)
+svm_metric2
+```

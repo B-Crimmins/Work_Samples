@@ -1,0 +1,217 @@
+---
+title: "Team Assignment 1"
+output: html_notebook
+---
+
+
+```{r}
+library(jrvFinance)
+```
+
+Question 1
+
+Importing data
+
+```{r}
+library(readr)
+
+data_q1 <- read_csv("~/Duke/Fixed Income Securities/Team Assignment 1/TeamAssignment1_Q1.csv")
+data_q1
+```
+
+
+Question 2
+
+Importing data
+
+```{r}
+#create date function
+DATE <- function(yyyy,mm,dd) {
+  dte  <- as.Date(sprintf("%i-%i-%i",yyyy,mm,dd),format="%Y-%m-%d")
+  return(dte)
+}
+
+#read-in data
+data_q2_strips <- read.csv("TeamAssignment1_Q2_strips.csv")
+data_q2_bonds <- read.csv("TeamAssignment1_Q2_bonds.csv")
+
+#separate dataframe
+q2_ci <- data_q2_strips[1:118,]
+q2_sp <- data_q2_strips[119:198,]
+
+
+
+data_q2_strips$maturity <- as.Date(data_q2_strips$maturity, format = "%m/%d/%Y")
+class(data_q2_strips$maturity)
+
+data_q2_bonds$maturity <- as.Date(data_q2_bonds$maturity, format = "%m/%d/%Y")
+class(data_q2_bonds$maturity)
+```
+
+
+```{r}
+
+bond_team22 <- data_q2_bonds[3,]
+mat_date_1 <- strsplit(bond_team22$maturity[[1]], '/')
+mature <- DATE(as.numeric(mat_date_1[[1]][3]), as.numeric(mat_date_1[[1]][1]), as.numeric(mat_date_1[[1]][2]))
+settle <- DATE(2020, 12, 16)
+freq <- 2
+conv   <- "ACT/ACT"
+#calculate accrue interest
+accint <- bond.TCF(settle,mature,bond_team22$coupon,freq,conv)$accrued
+full_price_bid <- bond_team22$pbid + accint
+full_price_ask <- bond_team22$pask + accint
+
+coupon_dates <- coupons.dates(settle,mature,freq)
+
+
+
+ci <- q2_ci[q2_ci$maturity %in% coupon_dates,]
+ci$ttm <- as.numeric((ci$maturity-settle))/365
+
+sp <- q2_sp[q2_sp$maturity == mature,]
+sp$ttm <- as.numeric((sp$maturity-settle)/365)
+
+cf_disfac <- ci$pbid/100 + c(rep(0,(length(ci$pbid)-1)),sp$pbid/100)
+arb_bid <- sum(ci$pbid/100)*bond_team22$coupon*100/2 + sp$pbid
+arb_ask <- sum(ci$pask/100)*bond_team22$coupon*100/2 + sp$pask
+
+cat('Full tnote bid: ', full_price_bid, '\n')
+cat('Full tnote ask: ', full_price_ask, '\n')
+cat('STRIP bid: ', arb_bid, '\n')
+cat('STRIP ask: ', arb_ask, '\n')
+
+```
+
+Code that can analyze all 12 bonds
+
+```{r}
+
+question2function <- function(team){
+  available_teams <- c(20:31)
+  if(!(team %in% available_teams)){
+    stop('Team not availale')
+  }
+  bond_team <- data_q2_bonds[data_q2_bonds$team==team,]
+  mat_date_1 <- str_split(bond_team$maturity[[1]], '/')
+  mature <- DATE(as.numeric(mat_date_1[[1]][3]), as.numeric(mat_date_1[[1]][1]), as.numeric(mat_date_1[[1]][2]))
+  settle <- DATE(2020, 12, 16)
+  freq <- 2
+  conv   <- "ACT/ACT"
+  accint <- bond.TCF(settle,mature,bond_team$coupon,freq,conv)$accrued
+  full_price_bid <- bond_team$pbid + accint
+  full_price_ask <- bond_team$pask + accint
+  
+  coupon_dates <- coupons.dates(settle,mature,freq)
+  
+  ci <- q2_ci[q2_ci$maturity %in% coupon_dates,]
+  ci$ttm <- as.numeric((ci$maturity-settle)/365)
+  
+  sp <- q2_sp[q2_sp$maturity == mature,]
+  sp$ttm <- as.numeric((sp$maturity-settle)/365)
+  
+  cf_disfac <- ci$pbid/100 + c(rep(0,(length(ci$pbid)-1)),sp$pbid/100)
+  arb_bid <- sum(ci$pbid/100)*bond_team$coupon*100/2 + sp$pbid
+  arb_ask <- sum(ci$pask/100)*bond_team$coupon*100/2 + sp$pask
+  
+  cat('Full tnote bid: ', full_price_bid, '\n')
+  cat('Full tnote ask: ', full_price_ask, '\n')
+  cat('STRIP bid: ', arb_bid, '\n')
+  cat('STRIP ask: ', arb_ask, '\n')
+}
+
+
+question2function(22)
+```
+
+Question 3
+
+Importing the data
+
+```{r}
+data_q3 <- read.csv("TeamAssignment1_Q3.csv")
+data_q3$Date <- as.Date(data_q3$Date, format = "%m/%d/%Y")
+class(data_q3$Date)
+```
+
+
+```{r}
+single_pay <- 123000000
+```
+
+
+3a
+
+```{r}
+head(q3_ci)
+as.Date(q3_ci$maturity)
+class(q3_ci$maturity)
+strips <- strips[1:118, ]
+q3_ci <- q2_ci
+q3_ci$price <- (q3_ci$pbid+q3_ci$pask)/2
+q3_ci$ttm <- as.numeric((q3_ci$maturity-settle)/365)
+
+zcb.yield <- function(zcb.price,ttm,freq=2) {
+  return( freq * ( (100/zcb.price)^(1/(freq*ttm)) - 1 ) )
+  
+}
+
+zcb.price <- function(zcb.yield,ttm,freq=2) {
+  return( 100/(1+zcb.yield/freq)^(freq*ttm) )
+  
+}
+
+q3_ci$spot <- zcb.yield(q3_ci$price,q3_ci$ttm)
+
+tmp <- data.frame(x = q3_ci$ttm, y = q3_ci$spot) 
+spline_df <- as.data.frame(spline(tmp$x, tmp$y, xout = tmp$x, method="natural"))
+
+newttm <- as.numeric((data_q3$Date - settle)/365)
+new_df <- as.data.frame(spline(tmp$x, tmp$y, xout = newttm, method="natural"))
+
+DF_newttm <- zcb.price(new_df$y,newttm)/100
+DF_newttm
+
+sum(DF_newttm * data_q3$Amount)
+```
+
+3b
+
+```{r}
+
+q3_ci$spot_bid <- zcb.yield(q3_ci$pbid,q3_ci$ttm)
+
+tmp_b <- data.frame(x = q3_ci$ttm, y = q3_ci$spot_bid) 
+
+newttm_b <- as.numeric((data_q3$Date - settle)/365)
+new_df_b <- as.data.frame(spline(tmp_b$x, tmp_b$y, xout = newttm_b, method="natural"))
+
+DF_newttm_b <- zcb.price(new_df_b$y,newttm_b)/100
+DF_newttm_b
+
+sum(DF_newttm_b * data_q3$Amount)
+
+```
+
+3c
+
+```{r}
+
+q3_ci$spot_ask <- zcb.yield(q3_ci$pask,q3_ci$ttm)
+
+tmp_a <- data.frame(x = q3_ci$ttm, y = q3_ci$spot_ask) 
+
+newttm_a <- as.numeric((data_q3$Date - settle)/365)
+new_df_a <- as.data.frame(spline(tmp_a$x, tmp_a$y, xout = newttm_a, method="natural"))
+
+DF_newttm_a <- zcb.price(new_df_a$y,newttm_a)/100
+DF_newttm_a
+
+sum(DF_newttm_a * data_q3$Amount)
+
+
+```
+
+
+
+

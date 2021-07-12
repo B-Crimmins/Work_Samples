@@ -1,0 +1,217 @@
+---
+title: "Bank Churn"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+bank <- read.csv("bank_churn.csv")
+bankdf <- as.data.frame(bank)
+head(bankdf)
+```
+
+
+```{r}
+install.packages("ggplot2", "corrplot")
+```
+```{r}
+summary(bankdf)
+```
+```{r}
+install.packages("naniar")
+library(naniar)
+gg_miss_var(bankdf)
+```
+
+```{r}
+#The percentage of churned customers in the data set is  20%
+sum(bankdf$Exited==1)/ nrow(bankdf)
+```
+```{r}
+#plot the difference between gender
+bankdf$Gender <- factor(bankdf$Gender)
+gender_churn <- plot(factor(Exited) ~ Gender, data=bankdf, col=c(2,9), ylab="Churn Rate") 
+
+F0 <- sum( (bankdf$Gender == "Female") & (bankdf$Exited == 0) ) 
+F1 <- sum( (bankdf$Gender == "Female") & (bankdf$Exited == 1) ) 
+M0 <- sum( (bankdf$Gender == "Male") & (bankdf$Exited == 0) ) 
+M1 <- sum( (bankdf$Gender == "Male") & (bankdf$Exited == 1) )
+ContingencyMatrix <- as.table(rbind(c(F0, F1), c(M0, M1)))
+chisq.test(ContingencyMatrix)$p.value
+```
+```{r}
+#Plot Tenure Churn
+library(ggplot2)
+Tenure_churn <- plot(factor(Exited) ~ factor(Tenure), data=bankdf, col=c(2,9), ylab="Churn Rate")
+```
+
+
+
+```{r}
+#Plot active member churn 
+Active_member_churn <- plot(factor(Exited) ~ factor(IsActiveMember), data=bankdf, col=c(2,9), ylab="Churn Rate")
+
+```
+```{r}
+#Plot Customers Who have a credit card with the bank and those that do not
+Credit_card_churn <- plot(factor(Exited) ~ factor(HasCrCard), data=bankdf, col=c(2,9), ylab="Churn Rate")
+
+```
+```{r}
+# Plot number of products 
+Number_products_churn <- plot(factor(Exited) ~ factor(NumOfProducts), data=bankdf, col=c(2,9), ylab="Churn Rate")
+```
+```{r}
+#Plot Credit Score 
+CreditScore_Churn <- plot(factor(Exited) ~ CreditScore, data=bankdf, col=c(2,9), ylab="Churn Rate")
+```
+```{r}
+```
+
+
+```{r}
+max(bankdf["EstimatedSalary"])
+min(bankdf["EstimatedSalary"])
+
+ggplot(bankdf, aes(x=EstimatedSalary, fill="#FF6666")) +
+  geom_histogram(aes(y=..density..),color="white",alpha=0.7) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Salary") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5))
+```
+```{r}
+#Plot Histogram of Account Balances
+
+ggplot(bankdf, aes(x=Balance, fill="#FF6666")) +
+  geom_histogram(aes(y=..density..),color="white",alpha=0.7) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Balances") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5))
+
+```
+```{r}
+max(bankdf["CreditScore"])
+min(bankdf["CreditScore"])
+
+#Plot histogram of Credit Score
+
+ggplot(bankdf, aes(x=CreditScore, fill="#FF6666")) +
+  geom_histogram(aes(y=..density..),color="white",alpha=0.7) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Credit Scores") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5))
+
+```
+```{r}
+plot(Age~EstimatedSalary, data=bankdf, xlab='Salary', ylab='Age', main='Exited')
+plot(Age~EstimatedSalary, data=bankdf, xlab='Salary', ylab='Age', main='Churn', col=ifelse(Exited==1,'red','blue'))
+
+```
+```{r}
+plot(EstimatedSalary~Age, data=bankdf, xlab='Age', ylab='Salary', main='Churn', col=ifelse(Exited==1,'red','blue'))
+aux_vec <- c(min(bankdf$Age), max(bankdf$Age) )
+z_logistic <- (-result$coef[1] - result$coef[3]*aux_vec) / result$coef[2]
+lines( aux_vec, z_logistic, lwd=6, lty=2, col="green")  
+```
+
+```{r}
+for (i in nrow(bankdf$Age)) {
+  if (i >= 45 & i <= 60) {
+    print(1)
+} else {
+  print(0)
+}
+}
+head(bankdf)
+```
+```{r}
+#Run logistic regression with all variables considered
+model1 <- glm(factor(Exited) ~ Tenure + CreditScore + Gender + Age + Balance + NumOfProducts + HasCrCard + IsActiveMember + EstimatedSalary, data=bankdf, family = "binomial")
+summary(model1)
+```
+```{r}
+bankchurn <- bankdf[1:500, ]
+predict(model1, newdata = bankchurn, type = "response")
+```
+```{r}
+#install packages for SVM
+
+install.packages("e1071")
+install.packages("rpart")
+library(e1071)
+library(rpart)
+
+```
+
+```{r}
+SVM_Model1 <- svm(factor(Exited) ~ CreditScore+Age, data=bankdf, type = "C-classification", kernal = "linear" )#, cost = 10, gamma=1)
+summary(SVM_Model1)
+```
+```{r}
+SVM_Model1$rho
+beta_svm <- t(SVM_Model1$coefs) %*% SVM_Model1$SV
+beta_svm
+
+plot(Age~Balance, data=bankdf, main="Churn Prediction via SVM", xlab='Balance', ylab='Age', col=ifelse(Exited==1,'red','blue'))
+
+z_svm <- (-svm_result$rho - beta_svm[2]*aux_vec) / beta_svm[1]
+lines( aux_vec, z_svm, lwd=5, lty=2, col = "green" )  
+
+#predict(SVM_Model1, newdata = bankchurn)
+
+```
+```{r}
+head(bankdf)
+```
+```{r}
+#Test Model performance 
+install.packages("ROCR")
+library(ROCR)
+install.packages("ROCR")
+library("ROCR")
+```
+
+
+```{r}
+get_metric <- function(result){
+  metric_df <- data.frame(row.names = c("accuracy", "precision", "recall", "auc"))
+  sample_num <- length(result$actual)
+  # confusion matrix
+  confusion_matrix <- table(result$predict, result$actual)
+  # precision / recall / accuracy
+  metric_df["precision", "value"] <- confusion_matrix[2, 2] / sum(result$predict)
+  metric_df["recall", "value"] <- confusion_matrix[2, 2] / sum(result$actual)
+  metric_df["accuracy", "value"] <- (confusion_matrix[1,1] + confusion_matrix[2,2]) / sample_num
+  # roc curve
+  model_roc <- roc(result$actual, result$predict)
+  plot(model_roc, print.auc=TRUE, auc.polygon = TRUE,legacy.axes = TRUE, max.auc.polygon=TRUE,
+       auc.polygon.col="skyblue", print.thres=TRUE,main = "ROC")
+  # auc
+  metric_df["auc", "value"] <- model_roc$auc
+  return(metric_df)
+}
+```
+
+
+```{r}
+## nonlinear svm
+library(lattice)
+library(caret)
+
+set.seed(100)
+SVM_Model2<-svm(Exited ~ CreditScore + Gender + Age + Tenure + Balance + NumOfProducts + EstimatedSalary + IsActiveMember, data= bankdf)
+summary(SVM_Model2)
+print(SVM_Model2)
+input <- bankdf[1:6, ]
+svm_predict_prob2<-predict(SVM_Model2,newdata = input, type="response")
+svm_result2<- data.frame(actual = input$Exited, predict = ifelse(svm_predict_prob2 > 0.5, 1, 0))
+svm_metric2 <- get_metric(svm_result2)
+svm_metric2
+```
+```{r}
+
+```
+

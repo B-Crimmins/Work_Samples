@@ -1,0 +1,375 @@
+---
+title: "Fixed Income Team Assignment 4"
+author: "Team 23"
+date: "3/20/2021"
+output: html_document
+---
+
+# Part 1 - R code for Question 1a-1e
+```{r}
+firmdata = read.csv("firmdata.csv")
+failfirm = read.csv("fail_firms.csv")
+firmdata = data.table(firmdata)
+
+firmdata$status = "0"
+empt = failfirm[,c("permno","fail.year")]
+firmdata = left_join(firmdata, empt, by ="permno")
+to_delete = which(firmdata$fyear >= firmdata$fail.year)
+firmdata = firmdata[!to_delete, ]
+firmdata$fail.year[is.na(firmdata$fail.year) == 1] = 0
+stat_list = which(firmdata$fail.year > 0)
+for (i in stat_list){
+  if (firmdata[i, "fail.year"] == firmdata[i+1, "fail.year"]){ 
+    firmdata$status[i] = "0"
+  } else {
+    firmdata$status[i] = "1"
+  }
+}
+
+training = firmdata %>%
+  filter(fyear >= 1962 & fyear <= 1983)
+testing = firmdata %>%
+  filter(fyear >= 1984 & fyear <= 1993)
+
+
+nrow(training)
+nrow(testing)
+sum(training$status == "1")
+sum(testing$status == "1")
+
+
+```
+
+```{r}
+df = training %>%
+  group_by(permno) %>%
+  summarise(fyear = max(fyear))
+
+training.N = inner_join(df, firmdata, by = c("permno","fyear"))
+
+df = testing %>%
+  group_by(permno) %>%
+  summarise(fyear = max(fyear))
+
+testing.N = inner_join(df, firmdata, by=c("permno","fyear"))
+
+training.N$status = as.numeric(training.N$status)
+testing.N$status = as.numeric(testing.N$status)
+training$status = as.numeric(training$status)
+testing$status = as.numeric(testing$status)
+
+Alt.1 <- glm(status ~ wc_ta + re_ta + ebit_ta + me_tl + s_ta + lage, family = binomial, 
+data = training.N)
+
+pred <- predict(Alt.1, newdata = testing.N, type="response")
+
+Alt.1.auc <- roc(testing.N$status, pred, algorithm=2)$auc
+
+Alt.m <- glm(status ~ wc_ta + re_ta + ebit_ta + me_tl + s_ta + lage, family = binomial, data = training)
+
+pred <- predict(Alt.m,newdata=testing.N,type="response")
+
+Alt.m.auc <- roc(testing.N$status,pred,algorithm=2)$auc
+
+Alt.1.auc
+Alt.m.auc
+```
+
+```{r}
+Alt.N.2 <- glm(status ~ ni_ta + tl_ta + ca_cl +lage, family = binomial, data = training.N)
+
+pred <- predict(Alt.N.2, newdata = testing.N, type = "response")
+
+Alt.1.auc.2 <- roc(testing.N$status, pred, algorithm=2)$auc
+
+Alt.m.2 <- glm(status ~ ni_ta + tl_ta + ca_cl +lage, family = binomial, data = training)
+
+pred <- predict(Alt.m.2, newdata = testing.N, type="response")
+
+Alt.m.auc.2 <- roc(testing.N$status, pred, algorithm=2)$auc
+
+Alt.1.auc.2
+Alt.m.auc.2
+```
+
+```{r}
+Alt.N.3 <- glm(status ~ ni_ta + tl_ta + size + ri_rm + sigma + lage, family = binomial, data = training.N)
+
+pred <- predict(Alt.N.3, newdata = testing.N, type = "response")
+
+Alt.1.auc.3 <- roc(testing.N$status, pred, algorithm=2)$auc
+
+Alt.m.3 <- glm(status ~ ni_ta + tl_ta + size + ri_rm + sigma + lage, family = binomial, data = training)
+
+pred <- predict(Alt.m.3, newdata = testing.N, type="response")
+
+Alt.m.auc.3 <- roc(testing.N$status, pred, algorithm=2)$auc
+
+Alt.1.auc.3
+Alt.m.auc.3
+```
+
+
+
+#Part 2 - R code for Question 2
+
+```{r}
+# Step 1 Start with a hypothetical set of values
+library(data.table)
+library(ggplot2)
+library(quantmod)
+library(optimx)
+rate<-c(0.03,0.035,0.04,0.0425,0.045,0.0475,0.05,0.05125,0.0525,0.0525)
+ttm<-seq(0.5,5,by=0.5)
+r0<-rate[1]
+lambda<-0
+sigma<-0.01
+delt<-0.5
+parm <- c(lambda,sigma)
+
+
+names(parm) <- c("lambda","sigma")
+round(parm,5)
+prt.tree <- function(tree,digit=4) {
+  nt <- nrow(tree)
+  # transpose tree
+  trantree <- t(tree)
+  nt1 <- 2*nt-1
+  bintree  <- matrix(rep("",nt1*nt),nrow=nt1,ncol=nt)
+  # convert to bin tree
+  i1 <- nt
+  for (j in 1:nt) {
+    i1 <- nt-j+1
+    for (i in 1:j) {
+      bintree[i1,j] <- as.character(round(trantree[i,j],digit))
+      i1 <- i1 + 2
+    }
+  }
+  rownames(bintree) <- rep("",nt1)
+  colnames(bintree) <- rep("",nt)
+  return(noquote(bintree))
+}
+
+```
+
+```{r}
+# Step 2 Build the one-period spot rate tree, with 𝑟0,0(1) = 0.03, and nodes (i,j) are given in the diagram above. The up probability, q, is the same at all nodes.
+# Define up probability
+# n <- 10    # MC simulation trials
+
+T <- 5    # total time
+m <- 10   # subintervals
+dt <- T/m  # difference in time each subinterval
+N <- length(rate)
+years = N*dt
+
+data<-data.frame(z=rate,t=ttm)
+RB_BM_qtree <- function(lambda,sigma,years,delt) {
+  # Create up probability tree 
+  #
+  # Args: 
+  #   r0: The initial interest rate. 
+  #   kappa: The mean reversion rate. 
+  #   theta: The mean rate or long term rate. 
+  #   sigma: Volatility. 
+  #   years: The length of the tree in years.  
+  #
+  # Returns:
+  #   Up probability tree
+ 
+  sqdt <- sqrt(delt)
+  N    <- floor(years/delt)+1   # number of steps
+  ztree  <- matrix(0, nrow=N+1, ncol=N+1)
+  ztree[1,1] <- 0.03
+  u <- exp(sigma*sqrt(delt))
+  d <- exp(-sigma*sqrt(delt))
+  qtree  <- matrix(0, nrow=N+1, ncol=N+1)
+  qtree[1,1]<- (exp(lambda*delt)-d)/(u-d)
+  for (i in 2:N) {
+    i1 <- i-1
+    ztree[i,1:i1] <- ztree[i-1,1:i1]+sigma*sqdt
+    ztree[i,i] <- ztree[i-1,i-1]-sigma*sqdt
+    u <- exp(sigma*sqrt(delt))
+    d <- exp(-sigma*sqrt(delt))
+    qtree[i,1:i1] <- (exp(lambda*delt)-d)/(u-d)
+    qtree[i,i] <- (exp(lambda*delt)-d)/(u-d)
+  }
+  ind <- qtree < 0
+  qtree <- qtree * (1-ind)         # set negative entries to zero
+  ind <- qtree > 1
+  qtree <- ind + qtree * (1-ind)   # set entries > 1 to 1
+  return(qtree)
+}
+#qtree  = matrix(0, nrow=N+1, ncol=N+1)
+#for (i in 1:(N+1)) {
+#  for (j in 1:i) {
+ #   qtree[i,j] = (exp(lambda*0.5)-exp(-sigma*sqrt(0.5)))/(exp(sigma*sqrt(0.5))-exp(-sigma*sqrt(0.5)))
+ # }
+#}
+
+## simulate short rate paths
+
+set.seed(123437)
+RB_BM_ztree <- function(lambda,sigma,years,delt) {
+  # Create instantaneous spot rate tree 
+  #
+  # Args: 
+  #   r0: The initial interest rate. 
+  #   kappa: The mean reversion rate. 
+  #   theta: The mean rate or long term rate. 
+  #   sigma: Volatility. 
+  #   years: The length of the tree in years.  
+  #
+  # Returns:
+  #   Instantaneous spot rate tree. 
+
+
+sqdt <- sqrt(delt)
+  N    <- floor(years/delt)+1   # number of steps
+  ztree  <- matrix(0, nrow=N+1, ncol=N+1)
+  ztree[1,1] <- r0
+  for (i in 2:N) {
+    for(j in 1:(i-1)){
+   ztree[i,j] <- ztree[i-1,j]*exp(sigma*sqrt(delt))
+   ztree[i,j+1]<-ztree[i-1,j]*exp(-sigma*sqrt(delt)) 
+    }
+  }
+  return(ztree)
+} 
+#ztree <- matrix(0,N+1,N+1)  # matrix to hold short rate paths
+#ztree[1,1] <- 0.03
+ # for(i in 2:N){
+  #  for(j in 1:(i-1)){
+  #  ztree[i,j] <- ztree[i-1,j]*exp(sigma*sqrt(0.5))
+   # ztree[i,j+1]<-ztree[i-1,j]*exp(-sigma*sqrt(0.5)) 
+  #  }
+ # }
+
+BM_ZBP <- function(T,qtree,ztree,delt) {
+  # Create price tree for zero-coupon bond paying $1 in year T
+  # using a given instantaneous spot rate tree and up probability tree
+  #
+  # Args: 
+  #   T:     The maturity of the zero coupon bond (in years) 
+  #   qtree: The up probability tree
+  #   ztree: The instantaneous spot rate tree
+  #   delt:  length of a time step (in years)
+  #
+  # Returns:
+  #   Price tree of the zero coupon bond
+
+  N <- floor(T/delt)+1
+
+# make sure N < nrow(ztree)
+  if (N>nrow(ztree)) return(matrix(NA,nrow=N,ncol=N))
+  if (N>nrow(qtree)) return(matrix(NA,nrow=N,ncol=N))
+
+  ptree <- matrix(0,nrow=N,ncol=N)
+  ptree[N,1:N] <- 1  
+  for (i in (N-1):1) {
+    i1 <- i+1
+    ptree[i,1:i] <- exp(-delt*ztree[i,1:i])*
+      ( qtree[i,1:i]*ptree[i+1,1:i]+ (1-qtree[i,1:i])*ptree[i+1,2:i1])
+  }
+  return(ptree)
+}
+```
+
+```{r}
+qtree <- RB_BM_qtree(lambda,sigma, years, delt)
+ztree <- RB_BM_ztree(lambda,sigma,years,delt)
+prt.tree(qtree)
+prt.tree(ztree)
+```
+```{r}
+prt.tree(BM_ZBP(5,qtree,ztree,0.5))
+```
+
+
+
+
+
+
+```{r}
+#Step 4: From the zero coupon bonds, calculate the ten corresponding spot rates – these are the “model” spot rates.
+t = data[,2] 
+zmod = rep(0.03,N)
+for (imat in 1:N) {
+    yrs <- t[imat]
+    ZBP   <- BM_ZBP(yrs,qtree,ztree, delt)
+    zmod[imat] <- 2*((1/ZBP[1,1])^(1/(t[imat]*2))-1)
+  }
+tmp <- cbind(data[,c(2,1)],zmod)
+tmp
+tmp$err <- round(tmp$z - tmp$zmod,8)
+round(sum(tmp$err^2),8)
+```
+
+
+
+```{r}
+#Step 5: Find the sum of squared errors of the difference between the model spot rates and the observed spot rates, given in the table above.
+
+sse <- function(parm,data) {
+  z = data[,1]
+  t = data[,2]
+  N = length(z)
+  delt = 0.5
+  years= N*delt
+  lambda<-parm[1]
+  sigma<-parm[2]
+  zmod = rep(0.03,N)
+  qtree <- RB_BM_qtree(lambda,sigma,years,delt)
+  ztree <- RB_BM_ztree(lambda,sigma,years,delt)
+ for (imat in 1:N) {
+    yrs <- t[imat]
+    ZBP   <- BM_ZBP(yrs,qtree,ztree, delt)
+    zmod[imat] <- 2*((1/ZBP[1,1])^(1/(t[imat]*2))-1)
+  }
+  
+  ssem <- sum((z-zmod)^2 )*1000000
+  return(ssem) # scale sse up by 1000000 for use in optimization
+}
+round(sse(parm,data)/1000000,8)
+
+```
+
+
+```{r}
+#Step 6: Use optimx() to minimize the sum of squared errors over the two parameters, (𝜆,𝜎). 
+library(optimx)
+lb <- c(-Inf,0)
+opt2 <- optimx(parm,sse,method="L-BFGS-B",lower=lb,control=list(maxit=5000),data=data)
+print(opt2)
+parm2 <-c(opt2$lambda,opt2$sigma)
+sse(parm2,data)
+```
+
+```{r}
+z = data[,1]
+t = data[,2]
+N = length(z)
+delt = 0.5
+years= N*delt
+r0<-0.03
+lambda=parm2[1]
+sigma = parm2[2]
+zmod = rep(0.03,N)
+ qtree <- RB_BM_qtree(lambda,sigma,years,delt)
+ ztree <- RB_BM_ztree(lambda,sigma,years,delt)
+
+ for (imat in 1:N) {
+    yrs <- t[imat]
+    ZBP   <- BM_ZBP(yrs,qtree,ztree, delt)
+    zmod[imat] <- 2*((1/ZBP[1,1])^(1/(t[imat]*2))-1)
+  }
+
+tmp <- data.frame(t=data[,2],z=data[,1],zmod=round(zmod,4))
+tmp$err <- tmp$z - tmp$zmod
+
+round(parm2,4)
+tmp
+```
+```{r}
+round(sum(tmp$err^2),8)
+```

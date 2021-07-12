@@ -1,0 +1,268 @@
+---
+title: "FRM Team Assignment 1"
+author: "Yichen Jiang"
+date: "4/18/2021"
+output: html_document
+---
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(MASS)
+library(metRology)
+library(quantmod)
+library(xts)
+library(rugarch)
+library(moments)
+library(nloptr)
+```
+
+```{r}
+CalcVaRES <- function(r,alpha) {
+  VaR <- quantile(r,1-alpha)
+  ES  <- mean(r[r<VaR])
+  VaR_ES <- c(VaR,ES)
+  names(VaR_ES) <- c("VaR","ES")
+  return(VaR_ES)
+}
+```
+
+```{r}
+# F is the price of the underlying asset 
+# X is the strike price of the option
+# t is the time to maturity (in years)
+# r is the tbill rate (in decimal form)
+# sigma is the volatility of the underlying asset 
+# BFC is the price of the call option
+# BFP is the price of the put option
+# IVC is the implied volatility of the call option 
+# IVP is the implied volatility of the put option
+BFC <- function(F,X,t,r,sigma) { 
+  d1 <- log(F/X) + 0.5*sigma^2 *t 
+  d1 <- d1/(sigma*sqrt(t))
+  d2 <- d1 - sigma*sqrt(t)
+  N1 <- pnorm(d1)
+  N2 <- pnorm(d2)
+  C <- exp(-r*t) * (F * N1 - X * N2 ) 
+  return(C)
+}
+
+BFP <- function(F,X,t,r,sigma) { 
+  d1 <- log(F/X) + 0.5*sigma^2 *t 
+  d1 <- d1/(sigma*sqrt(t))
+  d2 <- d1 - sigma*sqrt(t)
+  NM1 <- pnorm(-d1)
+  NM2 <- pnorm(-d2)
+  P <- exp(-r*t) * (X * NM2 - F * NM1 ) 
+  return(P)
+}
+
+IVC <- function(F,X,t,r,Call) {
+  eval_f_C <- function(sigma) {
+    return ( (Call-BFC(F,X,t,r,sigma))^2 ) 
+  }
+  opts <- list("algorithm"="NLOPT_LN_COBYLA", "xtol_rel"=1.0e-8)
+  xs <- 0.10
+  es <- nloptr( x0=xs,
+                eval_f=eval_f_C,
+                opts=opts) 
+  return(es$solution)
+}
+
+IVP <- function(F,X,t,r,Put) {
+  eval_f_P <- function(sigma) {
+    return ( (Put-BFP(F,X,t,r,sigma))^2 ) 
+    }
+  opts <- list("algorithm"="NLOPT_LN_COBYLA", "xtol_rel"=1.0e-8)
+  xs <- 0.10
+  es <- nloptr( x0=xs,
+                eval_f=eval_f_P,
+                opts=opts) 
+  return(es$solution)
+}
+```
+
+#Part 1: Mutual Fund X
+```{r}
+#Question 1 
+fundx <- fread("MQM530-TeamAssignment1-fundX_logret.csv")
+fundx
+
+logret_vec <- as.vector(x[ , "logret"])
+
+# Reject HO: Logret_vec is normally distributed
+jarque.test(logret_vec)
+
+rdat <- x$logret
+n.fit <- fitdistr(rdat,"normal")
+n.fit$loglik
+
+t.fit <- fitdistr(rdat,"t")
+round(t.fit$estimate,6)
+t.fit$loglik
+m <- t.fit$estimate[1]
+s <- t.fit$estimate[2]
+tdf <- t.fit$estimate[3]
+
+nsim <- 100000
+alpha <- 0.95
+set.seed(123437)
+sim <- rt(nsim,tdf)*s + rep(m,nsim)
+VaR_ES <- CalcVaRES(sim,alpha)
+round(VaR_ES,4)
+```
+
+```{r}
+#Question 2
+holdings = read.csv("MQM530-TeamAssignment1-fundX_holdings.csv")
+holdings$Expiration = as.Date(holdings$Expiration, format = "%Y-%m-%d")
+holdings$Date = as.Date(holdings$Date, format = "%Y-%m-%d")
+holdings$ttm = as.numeric((holdings$Expiration-holdings$Date))/365
+
+esz17 = read.csv("ESZ2017.csv")
+esh18 = read.csv("ESH2018.csv")
+
+for (i in 1:nrow(holdings)){
+  if (holdings$Call.Put[i] == 1) {
+    holdings$iv[i] = IVC(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$OptPrice[i]) 
+  }
+  else if (holdings$Call.Put[i] == 2) {
+    holdings$iv[i] = IVP(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$OptPrice[i]) 
+  }
+}
+holdings
+df = data.frame(Strike = holdings$Strike, iv = holdings$iv, Call.Put = holdings$Call.Put)
+
+ggplot(df, aes(x=Strike, y=iv, color = factor(Call.Put))) + geom_point()
+#Options at lower strike prices have higher implied volatilities than options at higher strike prices
+```
+
+```{r}
+#Question 3
+holdings$ivn1 = holdings$iv * 1.5
+holdings$ivn2 = holdings$iv * 2
+holdings$ivn3 = holdings$iv * 3
+holdings$ivn4 = holdings$iv * 4
+
+for (i in 1:nrow(holdings)){
+  if (holdings$Call.Put[i] == 1){
+    holdings$pn1[i] = BFC(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn1[i])
+    holdings$pn2[i] = BFC(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn2[i])
+    holdings$pn3[i] = BFC(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn3[i])
+    holdings$pn4[i] = BFC(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn4[i])
+  }
+  else if (holdings$Call.Put[i] == 2) {
+    holdings$pn1[i] = BFP(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn1[i])
+    holdings$pn2[i] = BFP(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn2[i])
+    holdings$pn3[i] = BFP(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn3[i])
+    holdings$pn4[i] = BFP(holdings$FutPrice[i], holdings$Strike[i], holdings$ttm[i], holdings$r[i], holdings$ivn4[i])
+  }
+}
+
+cash = 628226078
+# This code is adding the value of the calls and the value of the puts
+or_val = sum(holdings$Contracts[1:20] * 250 * (holdings$OptPrice[1:20])) + sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$OptPrice[21:nrow(holdings)]) + cash
+total_val_n1 = sum(holdings$Contracts[1:20] * 250 * (holdings$pn1[1:20])) + sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$pn1[21:nrow(holdings)]) + cash
+total_val_n2 = sum(holdings$Contracts[1:20] * 250 * (holdings$pn2[1:20])) + sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$pn2[21:nrow(holdings)]) + cash
+total_val_n3 = sum(holdings$Contracts[1:20] * 250 * (holdings$pn3[1:20])) + sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$pn3[21:nrow(holdings)]) + cash
+total_val_n4 = sum(holdings$Contracts[1:20] * 250 * (holdings$pn4[1:20])) + sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$pn4[21:nrow(holdings)]) + cash
+
+(total_val_n1 - or_val)/or_val
+(total_val_n2 - or_val)/or_val
+(total_val_n3 - or_val)/or_val
+(total_val_n4 - or_val)/or_val
+
+View(holdings)
+total_val_n1
+
+
+sum(holdings$Contracts[1:20] * 250 * (holdings$OptPrice[1:20])) +sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$OptPrice[21:nrow(holdings)]) + cash
+sum(holdings$Contracts[21:nrow(holdings)] * 250 * holdings$OptPrice[21:nrow(holdings)])
+
+or_val
+
+#The implied volatility would have to increase between 100% and 200% to decrease the portfolio value by 50%
+#I would also look at time to maturity, and the other greeks for the options.
+```
+
+
+#Part 2: Stock G
+```{r}
+#Question 4a
+skewness(logret)
+kurtosis(logret)
+rdat <- as.vector(logret)
+jarque.test(rdat)
+```
+
+```{r}
+#Question 4b
+acf <- acf(logret)
+acf$acf
+```
+
+```{r}
+pacf <- pacf(logret)
+pacf$acf
+#According to the acf and pacf function, there is no strong evidence of autocorrelation especially because some of the partial autocorrelation coefficients are not approximately zero
+```
+
+```{r}
+#Question 4c
+acf <- acf(abs(logret))
+acf$acf
+#There is strong evidence of volatility clustering, since the autocorrelation coefficients of absolute value of logret are positive. 
+```
+
+```{r}
+#Question 4d
+load("StockG.rda")
+rdat <- as.vector(logret$StockG)
+n2021 <- length(logret["2003-01-02/2021-01-03"])
+uspec_t <- ugarchspec(variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+                      mean.model = list(armaOrder = c(1,0), include.mean = TRUE),
+                      distribution.model = "std") 
+roll_garch <- ugarchroll(spec=uspec_t,
+                           data=rdat,
+                           n.ahead=1,
+                           n.start= n2021,
+                           refit.every=1,
+                           refit.window="recursive",
+                           calculate.VaR=TRUE,
+                           VaR.alpha=0.05,
+                           cluster=NULL,
+                           keep.coef=TRUE)
+
+str(roll_garch@forecast$VaR)
+dfvar <- roll_garch@forecast$VaR
+names(dfvar) <- c("VaR","actual")
+dte <- index(logret["2021-01-04/"])
+dfvar$date <- dte
+head(dfvar)
+View(dfvar)
+
+#Graph of actual and VaR
+cols <- c("var"="red","actual"="blue")
+ggplot(dfvar) +
+  geom_line(aes(x=date,y=VaR,colour="var"),lwd=1) +
+  geom_col(aes(x=date,y=actual,colour="actual")) +
+  scale_colour_manual(NULL,values=cols) +
+  theme(legend.position="none") +
+  ggtitle("1-day 95% VaR during 2021") +
+  xlab("") +
+  ylab("") 
+
+#How many times did the actual log return exceed the VaR at 95% level?
+sum(dfvar$actual>lag(dfvar$VaR))
+#45 times
+```
+
+```{r}
+#Question 4e
+#margin level on 2021-01-04
+round(abs(dfvar$VaR[dfvar$date=="2021-01-04"])*100,2)
+#margin level on 2021-03-12
+round(abs(dfvar$VaR[dfvar$date=="2021-03-12"])*100,2)
+
+View(dfvar)
+```

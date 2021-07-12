@@ -1,0 +1,454 @@
+---
+title: "Case Study 2"
+author: "Zeyao Wang, Yidan Wang, Ben He, Ronald Bristol, Bryson Crimmins"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+
+```{r libraries, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+library(readr)
+library(Hmisc)
+library(ggpubr)
+library(MASS)
+library(scales)
+install.packages("tm")
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+library(ggplot2)
+library(randomForest)
+library(ROCR)
+```
+
+
+## Introduction (5 min)
+
+**Business Context.** Real estate markets can sometimes be irrational, and buying a house can certainly be an emotional and highly psychological process. For example, the asking price can [“anchor”](https://en.wikipedia.org/wiki/Anchoring) the negotiations, and it can be very hard as a buyer to “forget” that initial number.
+
+You are a property developer who frequently buys properties. It would be very useful to get a fair estimate of the price of a property before seeing the asking price, based on features like its size and location. Besides making you a more informed buyer, having a pricing model could have multiple uses, such as automatically detecting under-priced properties that come on the market, or estimating the value added to a property if it was extended, divided into apartments, or converted into offices.
+
+**Business Problem.** Your task is to **build a model to predict property prices in the city of Milwaukee, Wisconsin**.
+
+## Data exploration
+
+
+1. **PropType**: the property category (“Commercial”, “Residential”, “Lg Apartment”, “Vacant Land”, or “Condominium”)
+2. **Taxkey**: a unique identifier for the property
+3. **Address**: the street address of the property
+4. **CondoProject**: for condominiums, the name of the project
+5. **District**: integer between 1 and 15 identifying the city district
+6. **Nbhd**: integer identifying one of 591 neighborhoods
+7. **Style**: information about the building architectural style, commerical use or type of building
+8. **Extwall**: type of exterior wall (e.g. “Brick”)
+9. **Stories**: number of stories
+10. **Year_Built**: the year the building was built
+11. **Nr_of_rms**: number of rooms
+12. **Fin_sqft**: finished square feet
+13. **Units**: number of units (e.g. apartments) in the building
+14. **Bdrms**: number of bedrooms
+15. **Fbath**: number of full bathrooms
+16. **Hbath**: number of half bathrooms
+17. **Lotsize**: size of the lot in square feet
+18. **Sale_date**: the date of the sale in YYYY-MM-DD format
+19. **Sale_price**: sale price in US dollars
+
+
+```{r, echo = FALSE}
+#read data
+getwd()
+data <- read.csv("2002-2018-property-sales-data.csv", header=TRUE)
+data$Sale_date <- as.character(data$Sale_date)
+data$Sale_date <- parse_date(data$Sale_date, format="%Y-%m")
+head(data)
+```
+
+Some tips:
+1. For the sake of removing potential confounding factors from consideration, focus on residential properties only (commercial properties are subject to all sorts of economic and market forces that residential properties are not). Also feel free to filter out other variables
+too (such as properties only above year 1800 etc).
+2. Pay attention to missing values. Sometimes missing numbers are entered as zeros, which can mess up the analysis (see `Lotsize` below as an example). Before proceeding, remove rows with zeros in `Year_Built`, `Fin_sqft`, `Lotsize`, and `Sale_price`, as these are the numerical variables where erroneous zero values can skew the distribution.
+
+# Data Cleaning
+```{r, echo = FALSE}
+data_tidy = data %>%
+filter(PropType == 'Residential' &
+           Year_Built != 0 & !is.null(Year_Built) &
+           Lotsize != 0 & !is.null(Lotsize) &
+           Fin_sqft != 0 & !is.null(Fin_sqft) &
+           Sale_price != 0 & !is.null(Sale_price))
+head(data_tidy)
+```
+
+# Exploratory Data Analysis
+```{r, echo=FALSE}
+#just ensuring the prop type was only residential 
+ggplot(data = data_tidy) + 
+  geom_bar(mapping = aes(x = PropType))
+```
+
+**Sale_price**: sale price in US dollars  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(x=Sale_price)) +
+  geom_histogram(aes(y=..density..),bins=50,color="white",fill="#6482B9",alpha=0.85) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Sales Prices") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+ggplot(data_tidy, aes(sample=log(Sale_price))) +
+  stat_qq(color="#6482B9") + 
+  stat_qq_line(color="coral2") +
+  labs(title="QQ Plot for log(Sale_price)", y="Ordered values") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+ggplot(data_tidy, aes(log(Sale_price))) +
+  geom_histogram(aes(y=..density..), 
+                 bins=50, 
+                 fill="#6482B9", 
+                 alpha=0.85, 
+                 color="white") +
+  geom_density(adjust=3) +
+  labs(title="Histogram of log(Sales_price)") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+**Count sorted by district**  
+```{r, echo = FALSE}
+#count sorted by district 
+ggplot(data = data_tidy) + 
+  geom_bar(mapping = aes(x = District)) +
+  labs(title="District Count") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+
+
+**Most used words in the style of residential houses**  
+```{r, echo = FALSE}
+#most used words in the style of residential houses
+wordcloud(words = data_tidy$Style)
+```
+
+**Sale price vs. District**  
+```{r, echo = FALSE}
+#District and Sale price mapping
+ggplot(data_tidy, 
+       aes(x = factor(District), 
+           y = Sale_price)) +
+  geom_boxplot() +
+  labs(title="Sale price vs. District") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+**Remove outliers of District**  
+```{r, echo = FALSE}
+#Boxplot of District and Sale Price removing 3 which is way higher priced and 14 which had an outlier making the axis look incorrect 
+data_tidy2 = data %>%
+  filter(PropType == 'Residential' &
+           Year_Built != 0 & !is.null(Year_Built) &
+           Lotsize != 0 & !is.null(Lotsize) &
+           Fin_sqft != 0 & !is.null(Fin_sqft) &
+           Sale_price != 0 & !is.null(Sale_price) &
+           District != 3 & District != 14)
+boxplot(Sale_price~District,data=data_tidy2, main="District Selling Prices",
+   xlab="District", ylab="Sales Price")
+```
+
+```{r, echo=FALSE}
+#Nbhd and District Grouping
+ggplot(data_tidy,
+       aes(x = Nbhd,
+           y= District)) + 
+  geom_point()
+```
+
+**Sale_price vs. Neigborhood**  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(Nbhd)) +
+  geom_histogram(color="dodgerblue4", binwidth=0.5) + scale_x_continuous() + labs(title="Histogram of Neighborhood", x="Nbhd")
+
+ggplot(data_tidy, aes(x=Nbhd, y=Sale_price)) +
+  geom_point(color="dodgerblue4") + 
+  labs(title="Price vs. Neighborhood") +
+  geom_smooth(formula=y~x, method=lm, color="red", level=0.95, se=FALSE) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(y){y/10^6})
+
+ggplot(data_tidy, aes(x=Nbhd, y=log(Sale_price))) +
+  geom_point(color="dodgerblue4") + 
+  labs(title="Log Price vs. Neighborhood") +
+  geom_smooth(formula=y~x, method=lm, color="red", level=0.95, se=FALSE) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(y){y/10^6})
+
+
+ggplot(data_tidy, aes(x=factor(Nbhd), y=log(Sale_price))) +
+  geom_boxplot(color="dodgerblue4") + 
+  labs(title="Log Price vs. Neighborhood") +
+  theme(plot.title=element_text(hjust=0.5))
+  
+```
+
+**Sale_price vs. Sqft_living**  
+```{r, echo = FALSE} 
+ggplot(data_tidy, aes(x=Style, y=Sale_price)) +
+   geom_boxplot(color="dodgerblue4") + 
+  labs(title="Price vs. sqft_living") +
+  theme(plot.title=element_text(hjust=0.5))
+
+ggplot(data_tidy, aes(x=Style, y=log(Sale_price))) +
+ geom_boxplot(color="dodgerblue4") + 
+  labs(title="Log Price vs. Sqft_Living") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+**Log Sale_price vs. Extwall**  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(Extwall)) +
+  geom_histogram(stat="count", fill="#AA4371", binwidth=0.5) + scale_x_discrete() + labs(title="Histogram of Wall Types", x="Exterior Wall") + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+ggplot(data_tidy, aes(Extwall, log(Sale_price), fill=Extwall)) + geom_boxplot() + labs(x = "Stories", y = "Price", title = "Boxplot of Price vs. Wall Types") + theme(legend.position = 'none', plot.title = element_text(size = 9, hjust=0.5))
+```
+
+**Log Sale_price vs. Stories**  
+```{r, echo = FALSE}
+ ggplot(data_tidy, aes(factor(Stories), log(Sale_price), fill=factor(Stories))) + geom_boxplot() + labs(x = "Stories", y = "Price", title = "Boxplot of Price vs. Stories") + theme(legend.position = 'none', plot.title = element_text(size = 9, hjust=0.5))
+```
+
+**Log Sale_price vs. Year the Building was Built**  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(factor(Year_Built), log(Sale_price), fill=factor(Year_Built))) + geom_boxplot() + labs(x = "Year", y = "Price", title = "Boxplot of log(Price) vs. Year Built") + theme(legend.position = 'none', plot.title = element_text(size = 9, hjust=0.5))
+
+ggplot(data_tidy, aes(x=Year_Built, y=log(Sale_price))) +
+  geom_point(color="gray0") + 
+  labs(title="log(Price) vs. Year Built") +
+  geom_smooth(formula=y~x, method=lm, color="red", level=0.95, se=FALSE) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(y){y/10^6})
+```
+
+**Log Sale_price vs. Year the Building was Built**  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(x=Fin_sqft)) +
+  geom_histogram(aes(y=..density..),bins=50,color="white",fill="#00AFBB",alpha=0.85) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Sales Prices") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+
+ggplot(data_tidy, aes(x=log(Fin_sqft))) +
+  geom_histogram(aes(y=..density..),bins=50,color="white",fill="#00AFBB",alpha=0.85) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Log Histogram of Sales Prices") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+
+ggplot(data_tidy, aes(x=log(Fin_sqft), y=log(Sale_price))) +
+  geom_point(color="#00AFBB",size=1) + 
+  labs(title="Log(Sale_price) vs. Log(Finished Square Feet)") +
+  geom_smooth(formula=y~x,method=lm, color="coral2") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+**Units**: number of units (e.g. apartments) in the building  
+```{r, echo = FALSE}
+ggplot(data_tidy,aes(Units)) +
+  geom_histogram(fill="#A0B9E7",binwidth=0.5) +
+  xlim(c(0,5)) +
+  labs(title="Histogram of Units",x="Number of Units") +
+  theme_minimal()
+data_tidy %>% filter(Units>0 & Units<5) %>%
+  ggplot(aes(x=factor(Units), y=log(Sale_price), fill=factor(Units))) +
+  geom_boxplot() + 
+  scale_fill_brewer(palette="PuBu") +
+  labs(title="Log(Sale_price) vs. Number of Units", x="Number of Units") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+**Bdrms**: number of bedrooms  
+```{r, echo = FALSE}
+ggplot(data_tidy,aes(Bdrms)) +
+  geom_histogram(fill="#D0762C",binwidth=0.5) +
+  scale_x_continuous(limit=c(0,10),breaks=seq(0,10,1)) +
+  labs(title="Histogram of Bedrooms",x="Number of Bedrooms") +
+  theme_minimal()
+data_tidy %>% filter(Bdrms>0 & Bdrms<10) %>%
+  ggplot(aes(x=factor(Bdrms), y=log(Sale_price), fill=factor(Bdrms))) +
+  geom_boxplot() + 
+  scale_fill_brewer(palette="OrRd") +
+  labs(title="Log(Sale_price) vs. Number of Bedrooms", x="Number of Bedrooms") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+**Fbath**: number of full bathrooms  
+```{r, echo = FALSE}
+ggplot(data_tidy,aes(Fbath)) +
+  geom_histogram(fill="#78A768",binwidth=0.5) +
+  scale_x_continuous(limit=c(0,6),breaks=seq(0,6,1)) +
+  labs(title="Histogram of Full Bathrooms",x="Number of Full Bathrooms") +
+  theme_minimal()
+data_tidy %>% filter(Fbath>=0 & Fbath<=6) %>%
+  ggplot(aes(x=factor(Fbath), y=log(Sale_price), fill=factor(Fbath))) +
+  geom_boxplot() + 
+  scale_fill_brewer(palette="Greens") +
+  labs(title="Log(Sale_price) vs. Number of Full Bathrooms", x="Number of Full Bathrooms") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+**Hbath**: number of half bathrooms  
+```{r, echo = FALSE}
+ggplot(data_tidy,aes(Hbath)) +
+  geom_histogram(fill="#61AC99",binwidth=0.5) +
+  scale_x_continuous(limit=c(0,5),breaks=seq(0,5,1)) +
+  labs(title="Histogram of Half Bathrooms",x="Number of Half Bathrooms") +
+  theme_minimal()
+data_tidy %>% filter(Hbath>=0 & Hbath<=3) %>%
+  ggplot(aes(x=factor(Hbath), y=log(Sale_price), fill=factor(Hbath))) +
+  geom_boxplot() + 
+  scale_fill_brewer(palette="GnBu") +
+  labs(title="Log(Sale_price) vs. Number of Half Bathrooms ", x="Number of Half Bathrooms") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+**Lotsize**: size of the lot in square feet  
+```{r, echo = FALSE}
+ggplot(data_tidy, aes(x=Lotsize)) +
+  geom_histogram(aes(y=..density..),bins=50,color="white",fill="#5C5A96",alpha=0.85) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Lotsize") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+ggplot(data_tidy, aes(log(Lotsize))) +
+  geom_histogram(aes(y=..density..), 
+                 bins=50, 
+                 fill="#5C5A96", 
+                 alpha=0.85, 
+                 color="white") +
+  geom_density(adjust=3) +
+  labs(title="Histogram of log(Lotsize)") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+ggplot(data_tidy, aes(x=log(Lotsize), y=log(Sale_price))) +
+  geom_point(color="#5C5A96",size=1) + 
+  labs(title="Log(Sale_price) vs. Log(Lotsize)") +
+  geom_smooth(formula=y~x,method=lm, color="coral2") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+**Sale_date**: the date of the sale in YYYY-MM-DD format  
+```{r, echo = FALSE}
+data_tidy %>% mutate(sale_year = substr(Sale_date,1,4), sale_month = substr(Sale_date,6,7)) %>%
+  ggplot(aes(x=factor(sale_year),y=log(Sale_price),fill=factor(sale_year))) +
+  geom_boxplot() +
+  labs(title="Log(Sale_price) vs. Year Sold", x="Year Sold") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+data_tidy %>% mutate(sale_year = substr(Sale_date,1,4), sale_month = substr(Sale_date,6,7)) %>%
+  ggplot(aes(x=factor(sale_month),y=log(Sale_price),fill=factor(sale_month))) +
+  geom_boxplot() +
+  labs(title="Log(Sale_price) vs. Month Sold", x="Month Sold") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  theme_minimal()
+```
+
+# Correlation
+```{r, echo = FALSE}
+library(corrplot)
+drops <- c("PropType","Address","CondoProject","Style", "Extwall", "Sale_date", "Nr_of_rms")
+data_tidy_corr <- data_tidy[,!(names(data_tidy) %in% drops)]
+# Correlation
+res <- cor(data_tidy_corr)
+round(res, 2)
+# Correlation Plot
+corrplot(res, type="upper")
+```
+
+# Modeling
+## Linear Regression Model
+```{r, echo = FALSE}
+##Linear Model
+model_1 <- lm(Sale_price ~ Taxkey + District + Nbhd + Stories + Year_Built + Fin_sqft + Units + Bdrms + Fbath + Hbath + Lotsize, data = data_tidy)
+summary(model_1)
+#confint(model_1) #95% CI for coefficients
+#predict(model_1, type = "response") #predictd values
+#residuals(model_1, type = "deviance") #residuals
+```
+```{r}
+AIC(model_1)
+```
+
+## Linear Regression Model with Transformed variables - Log(y) and log(lotsize), factor(District) and factor(Nbhd)
+```{r, echo = FALSE}
+model_2 <- lm(log(Sale_price) ~ Taxkey + factor(District) + factor(Nbhd) + Stories + Style + Extwall + Year_Built + Fin_sqft + Units + Bdrms + Fbath + Hbath + log(Lotsize), data = data_tidy)
+summary(model_2)
+```
+
+```{r}
+AIC(model_2)
+```
+
+## Boxcox
+```{r, echo = FALSE}
+#evaluating a boxcox transformation of non-normal dependent variable
+bc <- boxcox(lm(Sale_price ~ Taxkey + District + Nbhd + Stories + Year_Built + Fin_sqft + Units + Bdrms + Fbath + Hbath + Lotsize, data = data_tidy))
+
+#get the lambda value
+optimal_lambda <- bc$x[which(bc$y == max(bc$y))]
+round(optimal_lambda, 2)  #because lambda was btw. 0 & 1, transform dependent by squaring it
+
+#transform variable by lambda
+model_3 <- lm(Sale_price^.51 ~ Taxkey + District + Nbhd + Stories + Year_Built + Fin_sqft + Units + Bdrms + Fbath + Hbath + Lotsize, data = data_tidy)
+summary(model_3)
+```
+
+## Random Forest
+```{r, echo = FALSE}
+#keep numeric varibale 
+data_tidy_q<-data_tidy[,c(5,6,9,10,12,13,14,15,16,17,19)]
+```
+
+```{r, echo = FALSE}
+#for loop for clustering the price 
+for (i in 1:nrow(data_tidy_q)){
+  if (data_tidy_q$Sale_price[i]<50000){
+    data_tidy_q$Sale_price[i] = 'Low'
+  }
+ if (data_tidy_q$Sale_price[i]>50000& data_tidy_q$Sale_price[i]<550000){
+    data_tidy_q$Sale_price[i] = 'Medium'
+ }
+  else{
+    data_tidy_q$Sale_price[i] = 'High'
+  }
+}
+data_tidy_q$Sale_price = factor(data_tidy_q$Sale_price) 
+```
+
+```{r, echo = FALSE}
+train<-data_tidy_q[1:20000,]
+test<-data_tidy_q[-c(1:20000),]
+
+rf <- randomForest(Sale_price~., data=train, ntree=100, proximity=T)
+```
+
+```{r, echo = FALSE}
+summary(rf)
+score.rf <-predict(rf,newdata = test,type="response")
+importance(rf)
+#plot the importance of each independent variable...the higher the value on x axis, the more important it is to the model
+varImpPlot(rf)
+```
+
+```{r, echo = FALSE}
+#accuracy
+sum(test$Sale_price==score.rf)/(nrow(data_tidy)-20000)
+
+```
+

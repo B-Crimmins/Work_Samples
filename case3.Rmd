@@ -1,0 +1,450 @@
+---
+title: "case3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{R}
+# Direction 1
+# compute the equity strip yields at mid prices
+# convert futures price to spot/strip price, Ptn = Ftn/e^(nytn)
+dt1$spot12 <- dt1$F_t_12/exp(1*dt1$y_t_12)
+dt1$spot24 <- dt1$F_t_24/exp(2*dt1$y_t_24)
+dt1$spot36 <- dt1$F_t_36/exp(3*dt1$y_t_36)
+dt1$spot48 <- dt1$F_t_48/exp(4*dt1$y_t_48)
+dt1$spot60 <- dt1$F_t_60/exp(5*dt1$y_t_60)
+dt1$spot72 <- dt1$F_t_72/exp(6*dt1$y_t_72)
+dt1$spot84 <- dt1$F_t_84/exp(7*dt1$y_t_84)
+# strip yields
+dt1$yield12 <- (1/1)*log(dt1$div_12/dt1$spot12)
+dt1$yield24 <- (1/2)*log(dt1$div_12/dt1$spot24)
+dt1$yield36 <- (1/3)*log(dt1$div_12/dt1$spot36)
+dt1$yield48 <- (1/4)*log(dt1$div_12/dt1$spot48)
+dt1$yield60 <- (1/5)*log(dt1$div_12/dt1$spot60)
+dt1$yield72 <- (1/6)*log(dt1$div_12/dt1$spot72)
+dt1$yield84 <- (1/7)*log(dt1$div_12/dt1$spot84)
+# construct the eighth column which is 7 year yeild minus 1 year yield at each date
+dt1$yield7_1 <- dt1$yield84 - dt1$yield12
+
+```
+
+```{R}
+# mean yield
+m1 <- mean(dt1$yield12)
+m2 <- mean(dt1$yield24)
+m3 <- mean(dt1$yield36)
+m4 <- mean(dt1$yield48)
+m5 <- mean(dt1$yield60)
+m6 <- mean(dt1$yield72)
+m7 <- mean(dt1$yield84)
+m8 <- mean(dt1$yield7_1)
+# sd yield
+sd1 <- sd(dt1$yield12)
+sd2 <- sd(dt1$yield24)
+sd3 <- sd(dt1$yield36)
+sd4 <- sd(dt1$yield48)
+sd5 <- sd(dt1$yield60)
+sd6 <- sd(dt1$yield72)
+sd7 <- sd(dt1$yield84)
+sd8 <- sd(dt1$yield7_1)
+```
+
+```{R}
+# mean of yield in a recession
+dt1_recess <- subset(dt1, subset = recess==1)
+r1 <- mean(dt1_recess$yield12)
+r2 <- mean(dt1_recess$yield24)
+r3 <- mean(dt1_recess$yield36)
+r4 <- mean(dt1_recess$yield48)
+r5 <- mean(dt1_recess$yield60)
+r6 <- mean(dt1_recess$yield72)
+r7 <- mean(dt1_recess$yield84)
+r8 <- mean(dt1_recess$yield7_1)
+# mean of yield not in recession
+dt1_nonrecess <- subset(dt1, subset = recess==0)
+nr1 <- mean(dt1_nonrecess$yield12)
+nr2 <- mean(dt1_nonrecess$yield24)
+nr3 <- mean(dt1_nonrecess$yield36)
+nr4 <- mean(dt1_nonrecess$yield48)
+nr5 <- mean(dt1_nonrecess$yield60)
+nr6 <- mean(dt1_nonrecess$yield72)
+nr7 <- mean(dt1_nonrecess$yield84)
+nr8 <- mean(dt1_nonrecess$yield7_1)
+
+```
+
+
+```{R}
+# Table 1: Strip Yields 4x8
+Strip_Yields <- matrix(c(m1,m2,m3,m4,m5,m6,m7,m8,sd1,sd2,sd3,sd4,sd5,sd6,sd7,sd8,r1,r2,r3,r4,r5,r6,r7,r8,nr1,nr2,nr3,nr4,nr5,nr6,nr7,nr8),ncol=8,byrow=TRUE)
+colnames(Strip_Yields) <- c("1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "7year - 1 year")
+rownames(Strip_Yields) <- c("mean yield", "sd yield", "mean yield in recession", "mean yield outside recession")
+Strip_Yields <- as.table(Strip_Yields)
+Strip_Yields
+```
+Interpretation of Table1: 
+Referring to the questions for report/presentation:
+Q: Is the stripe yield curve upward sloping by maturity in this dataset? If the sample overrepresented recession, how would this impact the overall mean slope estiamte?
+A:
+   The overall yield curve is upward sloping for 1 year to 4 year, but then become slightly downward sloping from 4 year to 7 year.
+   It seems that recession is overrepresented here and distoring the overall yield curve.
+   If we seperate the dataset by in recession and outside recession, then we can clearly see that the yield curve is upward sloping outside recession and downward sloping in recession.
+  
+Q: Speculate on why strip yields might behave the way they do in recession and non-recession periods
+A:
+   Yield is high at the begining of the recession because investors are risk averse and demand higher return during time with high uncertainty.
+   Also during recession, growth tends to slow down, leading to lower asset prices, thus higher yield, as they are inversely related.
+   Recessions usually end after a few years, and as the economy warms up again, there will be less uncertainty and lower demand in return.
+   Thus, the yield curve is downward sloping during recession.
+   In contrast, outside recession, yield is originally low, and subtly increases as maturity increases, 
+   primarily because higher uncertainty for longer maturity means higher maturity premium
+
+```{R}
+# Direction 2
+# futures to spot price
+dt2$spot0 <- dt2$F_t_0/exp(0*dt2$y_t_0)
+dt2$spot11 <- dt2$F_t_11/exp((11/12)*dt2$y_t_11)
+dt2$spot12 <- dt2$F_t_12/exp((12/12)*dt2$y_t_12)
+dt2$spot23 <- dt2$F_t_23/exp((23/12)*dt2$y_t_23)
+dt2$spot24 <- dt2$F_t_24/exp((24/12)*dt2$y_t_24)
+dt2$spot35 <- dt2$F_t_35/exp((35/12)*dt2$y_t_35)
+dt2$spot36 <- dt2$F_t_36/exp((36/12)*dt2$y_t_36)
+dt2$spot47 <- dt2$F_t_47/exp((47/12)*dt2$y_t_47)
+dt2$spot48 <- dt2$F_t_48/exp((48/12)*dt2$y_t_48)
+dt2$spot59 <- dt2$F_t_59/exp((59/12)*dt2$y_t_59)
+dt2$spot60 <- dt2$F_t_60/exp((60/12)*dt2$y_t_60)
+dt2$spot71 <- dt2$F_t_71/exp((71/12)*dt2$y_t_71)
+dt2$spot72 <- dt2$F_t_72/exp((72/12)*dt2$y_t_72)
+dt2$spot83 <- dt2$F_t_83/exp((83/12)*dt2$y_t_83)
+dt2$spot84 <- dt2$F_t_84/exp((84/12)*dt2$y_t_84)
+# equity strip return
+# 1 month - spot*(1+yield)/(last period spot) - 1 
+dt2$r11 <- (dt2$spot11*(1+dt2$y_t_12)/dt2$spot12)-1
+dt2$r23 <- (dt2$spot23*(1+dt2$y_t_24)/dt2$spot24)-1
+dt2$r35 <- (dt2$spot35*(1+dt2$y_t_36)/dt2$spot36)-1
+dt2$r47 <- (dt2$spot47*(1+dt2$y_t_48)/dt2$spot48)-1
+dt2$r59 <- (dt2$spot59*(1+dt2$y_t_60)/dt2$spot60)-1
+dt2$r71 <- (dt2$spot71*(1+dt2$y_t_72)/dt2$spot72)-1
+dt2$r83 <- (dt2$spot83*(1+dt2$y_t_84)/dt2$spot84)-1
+# 1 year
+dt2$r12 <- (dt2$spot0*(1+dt2$y_t_12)/dt2$spot12)-1
+dt2$r24 <- (dt2$spot12*(1+dt2$y_t_24)/dt2$spot24)-1
+dt2$r36 <- (dt2$spot24*(1+dt2$y_t_36)/dt2$spot36)-1
+dt2$r48 <- (dt2$spot36*(1+dt2$y_t_48)/dt2$spot48)-1
+dt2$r60 <- (dt2$spot48*(1+dt2$y_t_60)/dt2$spot60)-1
+dt2$r72 <- (dt2$spot60*(1+dt2$y_t_72)/dt2$spot72)-1
+dt2$r84 <- (dt2$spot72*(1+dt2$y_t_84)/dt2$spot84)-1
+# 7-1 column
+dt2$r7_1_1 <- dt2$r83-dt2$r11
+dt2$r7_1_12 <- dt2$r84-dt2$r12
+
+```
+
+```{R}
+# annualized mean monthly return
+amr1 <- mean(dt2$r11)*12
+amr2 <- mean(dt2$r23)*12
+amr3 <- mean(dt2$r35)*12
+amr4 <- mean(dt2$r47)*12
+amr5 <- mean(dt2$r59)*12
+amr6 <- mean(dt2$r71)*12
+amr7 <- mean(dt2$r83)*12
+amr8 <- mean(dt2$r7_1_1)*12
+# annualized standard deviation of monthly return
+asd1 <- sd(dt2$r11)*sqrt(12)
+asd2 <- sd(dt2$r23)*sqrt(12)
+asd3 <- sd(dt2$r35)*sqrt(12)
+asd4 <- sd(dt2$r47)*sqrt(12)
+asd5 <- sd(dt2$r59)*sqrt(12)
+asd6 <- sd(dt2$r71)*sqrt(12)
+asd7 <- sd(dt2$r83)*sqrt(12)
+asd8 <- sd(dt2$r7_1_1)*sqrt(12)
+# annaulized Sharpe Ratio for monthly return
+asr1 <- (amr1-mean(dt2$y_t_12))/asd1
+asr2 <- (amr2-mean(dt2$y_t_24))/asd2
+asr3 <- (amr3-mean(dt2$y_t_36))/asd3
+asr4 <- (amr4-mean(dt2$y_t_48))/asd4
+asr5 <- (amr5-mean(dt2$y_t_60))/asd5
+asr6 <- (amr6-mean(dt2$y_t_72))/asd6
+asr7 <- (amr7-mean(dt2$y_t_84))/asd7
+asr8 <- (amr8-(mean(dt2$y_t_84)-mean(dt2$y_t_12)))/asd8
+
+```
+
+```{R}
+# mean 12 month return
+ayr1 <- mean(dt2$r12)
+ayr2 <- mean(dt2$r24)
+ayr3 <- mean(dt2$r36)
+ayr4 <- mean(dt2$r48)
+ayr5 <- mean(dt2$r60)
+ayr6 <- mean(dt2$r72)
+ayr7 <- mean(dt2$r84)
+ayr8 <- mean(dt2$r7_1_12)
+# standard deviation of 12month return
+ysd1 <- sd(dt2$r12)
+ysd2 <- sd(dt2$r24)
+ysd3 <- sd(dt2$r36)
+ysd4 <- sd(dt2$r48)
+ysd5 <- sd(dt2$r60)
+ysd6 <- sd(dt2$r72)
+ysd7 <- sd(dt2$r84)
+ysd8 <- sd(dt2$r7_1_12)
+# Sharpe Ratio for 12 month return
+ysr1 <- (ayr1-mean(dt2$y_t_12))/ysd1
+ysr2 <- (ayr2-mean(dt2$y_t_24))/ysd2
+ysr3 <- (ayr3-mean(dt2$y_t_36))/ysd3
+ysr4 <- (ayr4-mean(dt2$y_t_48))/ysd4
+ysr5 <- (ayr5-mean(dt2$y_t_60))/ysd5
+ysr6 <- (ayr6-mean(dt2$y_t_72))/ysd6
+ysr7 <- (ayr7-mean(dt2$y_t_84))/ysd7
+ysr8 <- (ayr8-(mean(dt2$y_t_84)-mean(dt2$y_t_12)))/ysd8
+
+```
+
+```{R}
+# Table 2: Strip Returns
+Strip_Returns <- matrix(c(amr1,amr2,amr3,amr4,amr5,amr6,amr7,amr8,asd1,asd2,asd3,asd4,asd5,asd6,asd7,asd8,asr1,asr2,asr3,asr4,asr5,asr6,asr7,asr8,
+                          ayr1,ayr2,ayr3,ayr4,ayr5,ayr6,ayr7,ayr8,ysd1,ysd2,ysd3,ysd4,ysd5,ysd6,ysd7,ysd8,ysr1,ysr2,ysr3,ysr4,ysr5,ysr6,ysr7,ysr8),ncol=8,byrow=TRUE)
+colnames(Strip_Returns) <- c("1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "7year - 1 year")
+rownames(Strip_Returns) <- c("annualized mean monthly return", "annualized sd of monthly return", "annualized Sharpe Ratio of monthly return",
+                             "mean 12 month return","sd of 12 month return", "Sharpe Ratio of 12 month return")
+Strip_Returns <- as.table(Strip_Returns)
+Strip_Returns
+
+```
+Interpretation of Table 2:
+
+  Holding period returns tend to be rising with maturity in this dataset, so do the Sharpe Ratios
+  
+  Higher holding period returns for long maturity are likely result of maturity premium and liquidity premium for longer maturity products.
+  Meaning that market participants anticipate higher uncertainty with long maturity.
+  Therefore, long maturity strip contracts are relatively riskier than short maturity ones.
+
+
+```{R}
+# Direction 3: bid-ask spread
+# bid-ask spread based on formula on case document
+dt3$ba1 <- (dt3$F.ask_t_12-dt3$F.bid_t_12)/(0.5*(dt3$F.ask_t_12+dt3$F.bid_t_12))
+dt3$ba2 <- (dt3$F.ask_t_24-dt3$F.bid_t_24)/(0.5*(dt3$F.ask_t_24+dt3$F.bid_t_24))
+dt3$ba3 <- (dt3$F.ask_t_36-dt3$F.bid_t_36)/(0.5*(dt3$F.ask_t_36+dt3$F.bid_t_36))
+dt3$ba4 <- (dt3$F.ask_t_48-dt3$F.bid_t_48)/(0.5*(dt3$F.ask_t_48+dt3$F.bid_t_48))
+dt3$ba5 <- (dt3$F.ask_t_60-dt3$F.bid_t_60)/(0.5*(dt3$F.ask_t_60+dt3$F.bid_t_60))
+dt3$ba6 <- (dt3$F.ask_t_72-dt3$F.bid_t_72)/(0.5*(dt3$F.ask_t_72+dt3$F.bid_t_72))
+dt3$ba7 <- (dt3$F.ask_t_84-dt3$F.bid_t_84)/(0.5*(dt3$F.ask_t_84+dt3$F.bid_t_84))
+# mean spread for each maturity
+ms1 <- mean(dt3$ba1)
+ms2 <- mean(dt3$ba2)
+ms3 <- mean(dt3$ba3)
+ms4 <- mean(dt3$ba4)
+ms5 <- mean(dt3$ba5)
+ms6 <- mean(dt3$ba6)
+ms7 <- mean(dt3$ba7)
+# sd for bid-ask spread
+sds1 <- sd(dt3$ba1)
+sds2 <- sd(dt3$ba2)
+sds3 <- sd(dt3$ba3)
+sds4 <- sd(dt3$ba4)
+sds5 <- sd(dt3$ba5)
+sds6 <- sd(dt3$ba6)
+sds7 <- sd(dt3$ba7)
+# mean spread recession
+dt3_recess <- subset(dt3, subset = recess==1)
+msr1 <- mean(dt3_recess$ba1)
+msr2 <- mean(dt3_recess$ba2)
+msr3 <- mean(dt3_recess$ba3)
+msr4 <- mean(dt3_recess$ba4)
+msr5 <- mean(dt3_recess$ba5)
+msr6 <- mean(dt3_recess$ba6)
+msr7 <- mean(dt3_recess$ba7)
+# mean spread non-recession
+dt3_nonrecess <- subset(dt3, subset = recess==0)
+msnr1 <- mean(dt3_nonrecess$ba1)
+msnr2 <- mean(dt3_nonrecess$ba2)
+msnr3 <- mean(dt3_nonrecess$ba3)
+msnr4 <- mean(dt3_nonrecess$ba4)
+msnr5 <- mean(dt3_nonrecess$ba5)
+msnr6 <- mean(dt3_nonrecess$ba6)
+msnr7 <- mean(dt3_nonrecess$ba7)
+```
+
+```{R}
+# Table 3: Bid Ask Spreads
+Bid_Ask_Spreads <- matrix(c(ms1,ms2,ms3,ms4,ms5,ms6,ms7,
+                            sds1,sds2,sds3,sds4,sds5,sds6,sds7,
+                            msr1,msr2,msr3,msr4,msr5,msr6,msr7,
+                            msnr1,msnr2,msnr3,msnr4,msnr5,msnr6,msnr7),ncol=7,byrow=TRUE)
+colnames(Bid_Ask_Spreads) <- c("1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year")
+rownames(Bid_Ask_Spreads) <- c("mean spread", "standard deviation", "mean spread during recession","mean spread outside recession")
+Bid_Ask_Spreads <- as.table(Bid_Ask_Spreads)
+Bid_Ask_Spreads
+```
+Interpretation of Table 3:
+
+  Bid-ask spread will reduce holding period return because the ask price is always higher than the bid price.
+  Bid-ask spread tend to rise with maturity, indicating that long maturity strip contracts are less liquid.
+  Spreads tend to be higher for all maturity / investment horizon during recession, likely a result of increase uncertainty in market and less liquidity during recession.
+
+
+```{R}
+# Direction 4: Spread adjusted returns
+SAR11 <- (dt3$F.bid_t_11*(1+dt2$y_t_12)/dt3$F.ask_t_12)*(exp(-(11/12-1)*dt2$y_t_11) / exp(-(1)*dt2$y_t_12))-1
+SAR23 <- (dt3$F.bid_t_23*(1+dt2$y_t_24)/dt3$F.ask_t_24)*(exp(-(23/12-1)*dt2$y_t_23) / exp(-(2)*dt2$y_t_24))-1
+SAR35 <- (dt3$F.bid_t_35*(1+dt2$y_t_36)/dt3$F.ask_t_36)*(exp(-(35/12-1)*dt2$y_t_35) / exp(-(3)*dt2$y_t_36))-1
+SAR47 <- (dt3$F.bid_t_47*(1+dt2$y_t_48)/dt3$F.ask_t_48)*(exp(-(47/12-1)*dt2$y_t_47) / exp(-(4)*dt2$y_t_48))-1
+SAR59 <- (dt3$F.bid_t_59*(1+dt2$y_t_60)/dt3$F.ask_t_60)*(exp(-(59/12-1)*dt2$y_t_59) / exp(-(5)*dt2$y_t_60))-1
+SAR71 <- (dt3$F.bid_t_71*(1+dt2$y_t_72)/dt3$F.ask_t_72)*(exp(-(71/12-1)*dt2$y_t_71) / exp(-(7)*dt2$y_t_72))-1
+SAR83 <- (dt3$F.bid_t_83*(1+dt2$y_t_84)/dt3$F.ask_t_84)*(exp(-(83/12-1)*dt2$y_t_83) / exp(-(8)*dt2$y_t_84))-1
+SAR83_11 <- SAR83-SAR11
+#12-month
+SAR12 <- (dt3$F.bid_t_12*(1+dt2$y_t_0)/dt3$F.ask_t_12)*(exp(-(12/12-1)*dt2$y_t_11)  / exp(-(1)*dt2$y_t_12))-1
+SAR24 <- (dt3$F.bid_t_24*(1+dt2$y_t_12)/dt3$F.ask_t_24)*(exp(-(24/12-1)*dt2$y_t_11) / exp(-(2)*dt2$y_t_12))-1
+SAR36 <- (dt3$F.bid_t_36*(1+dt2$y_t_24)/dt3$F.ask_t_36)*(exp(-(36/12-1)*dt2$y_t_11) / exp(-(3)*dt2$y_t_12))-1
+SAR48 <- (dt3$F.bid_t_48*(1+dt2$y_t_36)/dt3$F.ask_t_48)*(exp(-(48/12-1)*dt2$y_t_11) / exp(-(4)*dt2$y_t_12))-1
+SAR60 <- (dt3$F.bid_t_60*(1+dt2$y_t_48)/dt3$F.ask_t_60)*(exp(-(60/12-1)*dt2$y_t_11) / exp(-(5)*dt2$y_t_12))-1
+SAR72 <- (dt3$F.bid_t_72*(1+dt2$y_t_60)/dt3$F.ask_t_72)*(exp(-(72/12-1)*dt2$y_t_11) / exp(-(6)*dt2$y_t_12))-1
+SAR84 <- (dt3$F.bid_t_84*(1+dt2$y_t_72)/dt3$F.ask_t_84)*(exp(-(84/12-1)*dt2$y_t_11) / exp(-(7)*dt2$y_t_12))-1
+SAR84_12 <- SAR84 - SAR12
+```
+
+```{R}
+#Annualized monthly SAR
+ASAR1 <- mean(SAR11)*12
+ASAR2 <- mean(SAR23)*12
+ASAR3 <- mean(SAR35)*12
+ASAR4 <- mean(SAR47)*12
+ASAR5 <- mean(SAR59)*12
+ASAR6 <- mean(SAR71)*12
+ASAR7 <- mean(SAR83)*12
+ASAR8 <- mean(SAR83_11)*12
+#Annualized SD SAR
+SDSAR1 <- sd(SAR11)*sqrt(12)
+SDSAR2 <- sd(SAR23)*sqrt(12)
+SDSAR3 <- sd(SAR35)*sqrt(12)
+SDSAR4 <- sd(SAR47)*sqrt(12)
+SDSAR5 <- sd(SAR59)*sqrt(12)
+SDSAR6 <- sd(SAR71)*sqrt(12)
+SDSAR7 <- sd(SAR83)*sqrt(12)
+SDSAR8 <- sd(SAR83_11)*sqrt(12)
+#Annualized Sharpe Ratio
+ASAR_SR1 <- (ASAR1-mean(dt2$y_t_12))/ SDSAR1
+ASAR_SR2 <- (ASAR2-mean(dt2$y_t_24))/ SDSAR2
+ASAR_SR3 <- (ASAR3-mean(dt2$y_t_36))/ SDSAR1
+ASAR_SR4 <- (ASAR4-mean(dt2$y_t_48))/ SDSAR1
+ASAR_SR5 <- (ASAR5-mean(dt2$y_t_60))/ SDSAR1
+ASAR_SR6 <- (ASAR6-mean(dt2$y_t_72))/ SDSAR1
+ASAR_SR7 <- (ASAR7-mean(dt2$y_t_84))/ SDSAR1
+ASAR_SR8 <- (ASAR8-mean(dt2$y_t_84)-mean(dt2$y_t_12))/ SDSAR8
+```
+
+
+```{R}
+#mean 12 month return
+m12 <- mean(SAR12)
+m24 <- mean(SAR24)
+m36 <- mean(SAR36)
+m48 <- mean(SAR48)
+m60 <- mean(SAR60)
+m72 <- mean(SAR72)
+m84 <- mean(SAR84)
+m84_12 <- mean(SAR84_12)
+#SD of 12 month return
+sd12 <- sd(SAR12)
+sd24 <- sd(SAR24)
+sd36 <- sd(SAR36)
+sd48 <- sd(SAR48)
+sd60 <- sd(SAR60)
+sd72 <- sd(SAR72)
+sd84 <- sd(SAR84)
+sd84_12 <- sd(SAR84_12)
+#Sharpe 12 month return
+SR12 <- (m12-mean(dt2$y_t_12))/sd12
+SR24 <- (m24-mean(dt2$y_t_24))/sd24
+SR36 <- (m36-mean(dt2$y_t_36))/sd36
+SR48 <- (m48-mean(dt2$y_t_48))/sd48
+SR60 <- (m60-mean(dt2$y_t_60))/sd60
+SR72 <- (m72-mean(dt2$y_t_72))/sd72
+SR84 <- (m84-mean(dt2$y_t_84))/sd84
+SR84_12 <- (m84_12-mean(dt2$y_t_84)- mean(dt2$y_t_12))/sd84_12
+```
+
+```{r}
+four_matrix <- matrix(c(ASAR1, ASAR2, ASAR3, ASAR4, ASAR5, ASAR6, ASAR_SR7, ASAR_SR8,
+                        SDSAR1, SDSAR2, SDSAR3, SDSAR4, SDSAR5, SDSAR6, SDSAR7, SDSAR8,
+                        ASAR_SR1, ASAR_SR2, ASAR_SR3, ASAR_SR4, ASAR_SR5, ASAR_SR6, ASAR_SR7, ASAR_SR8,
+                        m12, m24, m36, m48, m60, m72, m84, m84_12,
+                        sd12, sd24, sd36, sd48, sd60, sd72, sd84, sd84_12,
+                        SR12, SR24, SR36, SR48, SR60, SR72, SR84, SR84_12), ncol = 8, byrow = TRUE)
+colnames(four_matrix) <- c("1 year", "2 year", "3 year", "4 year", "5 year", "6 year", "7 year", "7-1")
+rownames(four_matrix) <- c("Annualized SA Ret", "Annualized SA Std. Dev.", "Annualized SA Sharpe", "Mean 12-month Ret", "12-month Std. dev.", "12-month Sharpe")
+four_table <- as.table(four_matrix)
+four_table
+
+```
+
+
+```{R}
+# Direction 5: 
+
+```
+
+
+```{r}
+library(dplyr)
+es_returns_1 <- matrix(ncol = 7, nrow = length(dt2$spot0))
+for(i in 1:7) {
+   es_returns_1[,i] <- lead(dt2[,paste("dt3$F.ask_t_11", i*11-1, sep = "")])/(dt2[,paste("dt3$F.bid_t_11", i*12, sep = "")]) -1 
+}
+
+
+
+```
+```{r}
+library(dplyr)
+mean_free_1 <- c()
+for (i in 1:7) {
+  mean_free_1 <- c(mean_free_1, mean(dt2[, paste("y_t_",i*12,sep="")], na.rm=TRUE))
+}
+mean_free_1 <- c(mean_free_1, mean_free_1[7] - mean_free_1[1])
+mean_free_12 <- c()
+for (i in 1:7) {
+  mean_free_12 <- c(mean_free_12, mean(dt2[, paste("y_t_",i*12,sep="")], na.rm=TRUE))
+}
+mean_free_12 <- c(mean_free_12, mean_free_12[7] - mean_free_12[1])
+return_func = matrix(ncol=7,nrow=length(dt3$F.bid_t_0))
+for (i in 1:7) {
+  x_f = lead(dt3[,paste("F.bid_t_",i*11+i-1, sep="")])/(dt3[,paste("F.ask_t_",i*12, sep="")])
+  temp = exp(-(i*11+i-1)*lead(dt2[,paste("y_t_",i*11+i-1,sep="")]))/exp(-i*12*dt2[,paste("y_t_",i*12,sep="")])
+  return_func[,i] = x_f * temp - 1
+}
+return_func_1 = matrix(ncol=7,nrow=length(dt3$F.bid_t_0))
+for (i in 1:7) {
+  x_f_1 = lead(dt3[,paste("F.bid_t_",i*12-12, sep="")],12)/(dt3[,paste("F.ask_t_",i*12, sep="")])
+  temp_1 = exp(-(i*12-12)*lead(dt2[,paste("y_t_",i*12-12,sep="")],12))/exp(-i*12*dt2[,paste("y_t_",i*12,sep="")])
+  return_func_1[,i] = x_f_1 * temp_1 -1 
+}
+spread_mean = colMeans(return_func, na.rm=TRUE)
+spread_mean = c(spread_mean, spread_mean[7]-spread_mean[1])
+spread_sd = apply(return_func, 2, sd,na.rm=TRUE)
+spread_sd = c(spread_sd, spread_sd[7]-spread_sd[1])
+spread_sr = (spread_mean - mean_free_1)/spread_sd
+spread_mean_1 = colMeans(return_func_1, na.rm=TRUE)
+spread_mean_1 = c(spread_mean_1, spread_mean_1[7]-spread_mean_1[1])
+spread_sd_1 = apply(return_func_1, 2, sd, na.rm=TRUE)
+spread_sd_1 = c(spread_sd_1, spread_sd_1[7]-spread_sd_1[1])
+spread_sr_1 = (spread_mean_1 - mean_free_12)/spread_sd_1
+```
+
+```{r}
+# Table 4: Spread Adjusted Strip Returns.
+Table_4 <- rbind(spread_mean, spread_sd, spread_sr, spread_mean_1, spread_sd_1, spread_sr_1)
+colnames(Table_4) <- c("1 Year","2 Years", "3 Years", "4 Years","5 Years", "6 Years","7 Years","Yr 7 to 1 Diff")
+Table_4
+
+
+
+```
+

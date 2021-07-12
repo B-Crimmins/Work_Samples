@@ -1,0 +1,221 @@
+---
+title: "Case1"
+author: "group7"
+date: "10/10/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggpubr)
+library(ggplot2)
+library(corrplot)
+library(ggpubr)
+library(corrplot)
+```
+
+
+```{r cars}
+#load in data
+#source("DataAnalyticsFunctions.R")
+getwd() 
+#load("natalityNew.Rda")
+summary(d)
+drops <- c("id","birmon","tri.none","novisit")
+names(d) %in% drops
+!( names(d) %in% drops )
+DATA <- d[,!(names(d) %in% drops)]
+summary(DATA)
+```
+
+
+
+#Question 1
+```{r}
+# We want to examine the relation between the timing of the first prenatal visit and mother's weight gain during whole pregnancy
+# We start with dividing the dataset into three groups: late visit, standard visit, no visit
+# We classify late visit as first prenatal visit during third trimester of pregnancy and standard visit as first prenatal visit during the first two trimesters of pregnancy
+tri1 <- subset(DATA,subset = tri1 == 1)
+tri2 <- subset(DATA,subset = tri2 == 1)
+standard_visit <- rbind(tri1,tri2)
+late_visit <- subset(DATA,subset = tri3 == 1)
+no_visit <- subset(DATA,subset = tri1 == 0 & tri2 == 0 & tri3 == 0)
+```
+
+```{r}
+# We removed outliers from m.wtgain for both groups
+lh1 <- quantile(standard_visit$m.wtgain,probs=0.25)
+uh1 <- quantile(standard_visit$m.wtgain,probs=0.75)
+IQR1 <- 1.5 * (uh1-lh1)
+lb1 <- lh1-IQR1
+up1 <- uh1+IQR1
+standard <- standard_visit[standard_visit$m.wtgain < up1 & standard_visit$m.wtgain > lb1,]
+lh2 <- quantile(late_visit$m.wtgain,probs=0.25)
+uh2 <- quantile(late_visit$m.wtgain,probs=0.75)
+IQR2 <- 1.5 * (uh2-lh2)
+lb2 <- lh2-IQR2
+up2 <- uh2+IQR2
+late <- late_visit[late_visit$m.wtgain < up2 & late_visit$m.wtgain > lb2,]
+lh3 <- quantile(no_visit$m.wtgain,probs=0.25)
+uh3 <- quantile(no_visit$m.wtgain,probs=0.75)
+IQR3 <- 1.5 * (uh3-lh3)
+lb3 <- lh3-IQR3
+up3 <- uh3+IQR3
+no <- no_visit[no_visit$m.wtgain < up3 & no_visit$m.wtgain > lb3,]
+```
+
+```{r}
+# Use boxplots to show the median and range for m.wtgain for different timing of first prenatal visit
+g1 <- ggplot(standard,aes(m.wtgain)) + geom_boxplot(fill="aquamarine4",horizontal=TRUE,axes=FALSE,outline=FALSE)+ theme(legend.position="none") + labs(title="Weight Gain During Pregnancy for Standard Prenatal Visit") + theme_classic()
+g2<- ggplot(late,aes(m.wtgain)) + geom_boxplot(fill="darkgoldenrod3",horizontal=TRUE,axes=FALSE,outline=FALSE) + theme(legend.position="none") + labs(title="Weight Gain During Pregnancy for Late Prenatal Visit") + theme_classic()
+g3<- ggplot(no,aes(m.wtgain)) + geom_boxplot(fill="indianred3",horizontal=TRUE,axes=FALSE,outline=FALSE) + theme(legend.position="none") + labs(title="Weight Gain During Pregnancy for No Prenatal Visit") + theme_classic()
+ggarrange(g1,g2,g3,ncol=1,nrow=3)
+quantile(no$m.wtgain,probs=0.25)
+
+```
+During pregnancy, mothers’ choice on the timing of their first prenatal visit varies a lot. Mothers may have their prenatal visit at the very beginning of their pregnancy, or in the late stage (third trimester) of their pregnancy, or even opt to not have prenatal visit. We want to explore the relation between timing of the first prenatal visit and overall health of the mother and her baby. Specifically, we will examine the relationship between timing of prenatal visit (tri1,tri2,tri3) and mother’s weight gain during whole pregnancy (m.wtgain), as mother’s pregnancy weight gain is an indicator of the health of her pregnancy and the long-term health of her and her baby.
+Our result shows that the earlier the first prenatal visit, the larger weight gain for the whole pregnancy period. The data shows that the median for mothers who had prenatal visit during the first two trimesters of pregnancy is around 30 pounds, significantly greater than the median weight gain for late prenatal visit (26 pounds) and no prenatal visit (25 pounds). In addition to this, about 25% of mothers in the no visit group had weight gain lower than 16 pounds, indicating that they and their babies are more vulnerable to potential health issues. It is also worth noticing that mothers with no prenatal visit have more variations in weight gain during pregnancy. 
+As our analysis demonstrates the positive effects of early prenatal care on health during pregnancy, we want to further suggest that the government should place emphasis on advertising and promoting the benefits of early prenatal visit, and encourage pregnant women to pursue appropriate prenatal care. Early prenatal care means that doctors can help spot problems early and treat them accordingly, which helps improve the mother's health condition and reduce overall infant mortality rate.
+
+#Question 2
+```{r}
+### Organizational help for Question 2 
+### 
+### This creates a matrix with only the 10 binary variables 
+MatrixComp <- as.matrix( cbind( DATA$boy, DATA$tri1, DATA$tri2, DATA$tri3, DATA$black, DATA$married, DATA$ed.hs, DATA$ed.smcol, DATA$ed.col, DATA$smoke ))
+MatrixComp
+### Here is the associated LAbels (for convenience)
+LabelsTmp <- c( "boy", "tri1", "tri2", "tri3", "black", "married", "ed.hs", "ed.smcol", "ed.col","smoke")
+### Number of columns (should be 10)
+NumCol <- ncol(MatrixComp)
+### Next we compute the p-values for each pair
+pvals <- rep(0, NumCol*(NumCol-1)/2) 
+### Also will collect the pair label
+ListLabels <- rep("", NumCol*(NumCol-1)/2) 
+k <- 0
+for (i in 1:(NumCol-1) ){
+  for ( j in (i+1):NumCol ){
+    k <- k+1
+    ### Creates the entries of the contingency table
+    m00 <- sum( (MatrixComp[,i] == 0) & (MatrixComp[,j] == 0) ) 
+    m01 <- sum( (MatrixComp[,i] == 0) & (MatrixComp[,j] == 1) ) 
+    m10 <- sum( (MatrixComp[,i] == 1) & (MatrixComp[,j] == 0) ) 
+    m11 <- sum( (MatrixComp[,i] == 1) & (MatrixComp[,j] == 1) ) 
+    ### Construct the contingency table
+    ContingencyMatrix <- as.table(rbind(c(m00, m01), c(m10, m11)))
+    ### Perform the Pearson chi squares test for independent of factors
+    # store the p-value of the test 
+    pvals[k] <- chisq.test(ContingencyMatrix)$p.value  
+    # create the Label
+    ListLabels[k] <- paste(LabelsTmp[i],LabelsTmp[j], sep=" and ")  
+  }  
+}
+###############################################################
+ContingencyMatrix
+### Now you have:
+### a list of p-values; and
+### a list of labels to help you identify which are the variables 
+###
+### pvals: is a vector with 45 p-values each associated with an independence test
+### ListLabels: is a vector with the labels of the 2 variables used on each the independence test
+###
+### for example  
+### the third test pertains to the pair 
+ListLabels[3]
+### which p-value is
+pvals[3]
+
+################################################################
+
+################################################################
+# Combine two vector
+Labeldf = c()
+for (i in 1:length(ListLabels)) {
+  Labeldf = append(Labeldf, ListLabels[i])
+}
+pvalsdf = c()
+for (i in 1:length(pvals)) {
+  pvalsdf = append(pvalsdf, pvals[i])
+}
+#showing the combination of two variables and their respective p-value for chi.squared independence test
+result = as.data.frame(cbind(Labeldf, as.numeric(pvalsdf)))
+View(result)
+#pvalue <= 0.05
+test1 = result %>%
+  filter(pvalsdf <= 0.05)
+
+#bonferoni correction - changes the threshold of rejecting the null hypotheses (independence between two variables)
+#pvalue <=  0.05/45 = 0.0011
+test2 = result %>%
+  filter(pvalsdf <= 0.0011)
+test1
+
+```
+To test independence, we used chi-square test for independence to determine whether there is a relationship among all 45 combinations from 10 dummy variables in the database. Those 10 dummy variables are "boy", "tri1", "tri2", "tri3", "black", "married", "ed.hs", "ed.smcol", "ed.col","smoke". 
+The null hypothesis states that all variables are independent. There are some discrepancies between using the traditional 0.05 rule and Bonferroni correction. For traditional 0.05 rule, there are 38 pairs whose p-values are smaller than 0.05, then we reject the null hypothesis, which indicates those 10 dummy variables are not independent, which are “boy” with “black” and “married”, and other variables are dependent with all others. After using Bonferroni correction, p-values of boy with black and married are greater than 0.05/11 = 0.0011, then we fail to reject the null hypothesis, which show whether the infant is boy or not are independent with whether the mother is black or not and with whether the mother is married or not. I think the Bonferroni correction is correct and the traditional .05 rule is incorrect. We believe this because the Bonferroni shows us that sex of the baby is independent of race or marital status of the mother which to us is an independent event.
+
+#Question 3
+```{r}
+#visualizations of variables with baby weight
+ggplot(DATA, aes(mom.age, weight)) + geom_point() + geom_smooth(aes(mom.age, weight), method="lm") + theme(plot.title=element_text(hjust = 0.5))
+10:47
+ggplot(DATA, aes(factor(smoke), weight)) + geom_boxplot() + labs(x = "Mom smoke", y = "Weight", title = "Boxplot of Smoking vs. Mother's Weight Gain") + theme(plot.title=element_text(hjust = 0.5))
+10:47
+boxplot(weight~cigsper, data = DATA)
+10:47
+ggplot(DATA, aes(factor(cigsper), weight)) + geom_boxplot() + labs(x = "# of Cigs", y = "Weight", title = "Boxplot of Cig Count vs. Mother's Weight Gain") + theme(plot.title=element_text(hjust = 0.5))
+10:48
+boxplot(weight~black, data = DATA)
+10:48
+ggplot(DATA, aes(factor(m.wtgain) , weight, fill=factor(m.wtgain))) + geom_boxplot() + labs(x = "Mom Weight Gain", y = "Weight", title = "Boxplot of Weight vs. Mother's Weight Gain") + theme(legend.position = 'none', plot.title = element_text(size = 9, hjust=0.5))
+```
+
+```{r}
+#visualize the correlation between variables...important for colinearity
+cormat <- round(cor(DATA),2)
+head(cormat)
+
+res <- cor(DATA)
+round(res, 2)
+corrplot(res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+```{r}
+corr<- cor(DATA)
+corr
+```
+In order to test whether certain variables can help predict the birth weight, we plotted the variables against weight primarily using box and scatter plots in order to visualize the relationship. It is from the visualizations that we are able to identify variables that we believe can help predict the weight of the baby.
+The weight of the mother is thought to be predictive of baby weight in that we would expect to see heavier babies during the mother’s prime fertility years. From 18 through 30, we see a steady increase in the weight of the baby, but as the mother continues to age, baby weight plateaus and ultimately begins to drop.
+Whether or not the mother smokes seems to have a significant negative impact on birthweight. Smoking is proven to have negative health effects, so we would expect to see negative effects on the baby’s health as a result of the smoking mother. The plot below shows the difference between the effect on birthweight from a non-smoking mother(0) and a smoking mother(1) where we see a clear reduction in average weight for the smoking mother.
+The race of the mother appears to be a useful predictor of baby weight given that the weight of the baby is expected to be lower if the birth mother is black .
+The amount of weight the mother gains during pregnancy shows a positive relationship with the baby's weight, to a point. In general, the mother increasing her weight will result in a higher weight for the baby, but we see that as the weight gain for the mother becomes more drastic, the steady relationship breaks down and begins to have a negative impact on the weight of the baby. 
+According to the correlation matrix, weight has positive relationship with variable “married”, “boy”, “tri1”, “ed.smcol”, “ed.col”, “mom.age”, “m.wtgain” while having negative relationship with variables “black”, “tri2”, “tri3”, “ed.hs”, “smoke”, “cigsper”. Variables “tri1” and “tri2” has strong negative relationships while variables “smoke” and “cigsper” has strong positive relationship. 
+
+#Question 4
+```{r}
+##Linear Model
+model_1 <- lm(weight ~black + married + boy + tri1 + tri2 + tri3 + ed.hs + ed.smcol + ed.col + mom.age + smoke + cigsper + m.wtgain + mom.age2, data = DATA)
+summary(model_1)
+#confint(model_1) #95% CI for coefficients
+#predict(model_1, type = "response") #predictd values
+#residuals(model_1, type = "deviance") #residuals
+```
+When we used birthweight as response and ran a linear regression on the 14 variables. We had a final adjusted R Squared of .11. Every single variable is statistically significant as represented by their P Values (Exhibit 4). Each of the variables would significantly impact the newborns’ birth weight. 
+
+#Question 5
+If we want to predict the weight of the baby from data at the end of the 1st Trimester you may run into complications when using the model from Q4 (Exhibit 2). One of the issues we could deal with is the mother's weight gain (m.wtgain). This variable could create issues seeing that we don’t know the exact weight of the baby at 1st Trimester and thus the mothers weight gain could be unimportant to determining baby’s final weight. Another issue with this model implementation would be when we tried to predict birth weight early on we are not accounting for the fact that the baby gains its most weight rapidly towards the end of pregnancy and the length of pregnancy plays a big role in this final number. If the baby comes early / is overdue in terms of a normal length, the weight can be thrown off and we aren’t modeling the likelihood of a normal birth time. Some of the choice variables for implementing this model would be smoking status of mom, gender of baby, race of the family. These variables all play a bigger factor on the final prediction of weight gain. 
+
+#Question 6
+Potential issues regarding deployment and some suggestions:
+
+1. Issue with short staffing/overstaffing: forecasting needs for employment could be detrimental if we are very exact in nature when such a volatile need based service is being  predicted. For sickness, injury, random accidents etc the model could not predict well what every single person is doing on a daily basis, the lifestyle, and situations that they may be in. Based on data from patients you could predict no one will be sick during this time of the year and then a virus infects the town and you would be understaffed. The same could happen during flu season as you think you need more staff and it turns out that your town has been safe/healthy recently and less people come into the hospital so you would be overstaffed. It would be safe to apply some of the predictions in order to staff the hospital, but going only off the model could leave you on the wrong side of efficiency vs cost based on outside factors the model can’t contain.
+
+2. Tendency to rely too heavily on the model: Linear Regression only has an adjusted R square of 0.11, which fit only 11% of the data. The model cannot fully explain all the data set. It might have biased results when using the model to do the prediction. We could later run boxcox or AIC, BIC to improve the model’s accuracy and provide more precise prediction.
+
+3. Ethical issues & compliance risk: As we collect more data and employ models for different functions, the risk of data leakage and misuse will also increase. Health care data are very sensitive data and can contain significant amounts of personal information that patients do not want to disclose to others. To prevent client data from being stolen or misused, the hospital needs to have a cybersecurity team and compliance team to secure the data, monitor internal usage, and ensure compliance to relevant laws.

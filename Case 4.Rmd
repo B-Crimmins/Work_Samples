@@ -1,0 +1,657 @@
+---
+title: "Case 4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+load("data_4.RData")
+```
+
+```{r}
+remove(list = ls())
+
+```
+
+```{r}
+View(dt)
+```
+
+```{r}
+#Whole Sample
+#mean monthly nominal return
+allmeanstock <- mean(dt$Stocks)
+allmeanbonds <- mean(dt$Bonds)
+allmeangold <- mean(dt$Gold)
+allmeancommodities <- mean(dt$Commodities)
+allmeantbill <- mean(dt$Tbill)
+allmeaninflation <- mean(dt$Inflation)
+allmeanindex <- mean(dt$ISMNO.Index)
+allmeanreturns <- c(allmeanstock, allmeanbonds, allmeangold, allmeancommodities)
+allmeanreturns
+#Standard Deviaiton of Return
+allsdstock <- sd(dt$Stocks)
+allsdbonds <- sd(dt$Bonds)
+allsdgold <- sd(dt$Gold)
+allsdcommodities <- sd(dt$Commodities)
+allsdtbill <- sd(dt$Tbill)
+allsdinflation <- sd(dt$Inflation)
+allsdindex <- sd(dt$ISMNO.Index)
+
+#Sharpe Ratio
+allSR_stocks <- allmeanstock/allsdstock
+allSR_bonds <- allmeanbonds/allsdbonds
+allSR_gold <- allmeangold/allsdgold
+allSR_commodidities <- allmeancommodities/allsdcommodities
+allSR_tbill <- allmeantbill/allsdtbill
+allSR_inflation <- allmeaninflation/allsdinflation
+allSR_index <- allmeanindex/allsdindex
+```
+
+```{r}
+# Low Growth, Low Inflation
+lowg_lowI <- subset(dt, subset = INF1GRW1 == 1)
+#lower/uppercase indicates low/high growth respectively
+#monthly nominal returns
+gi_stocks <- mean(lowg_lowI$Stocks)
+gi_bonds <- mean(lowg_lowI$Bonds)
+gi_gold <- mean(lowg_lowI$Gold)
+gi_commodities <- mean(lowg_lowI$Commodities)
+gi_tbill <- mean(lowg_lowI$Tbill)
+gi_inflation <- mean(lowg_lowI$Inflation)
+gi_index <- mean(lowg_lowI$ISMNO.Index)
+gi_mean_returns <- c(gi_stocks, gi_bonds, gi_gold, gi_commodities)
+
+#standard deviation of return
+gisd_stocks <- sd(lowg_lowI$Stocks)
+gisd_bonds <- sd(lowg_lowI$Bonds)
+gisd_gold <- sd(lowg_lowI$Gold)
+gisd_commodities <- sd(lowg_lowI$Commodities)
+gisd_tbill <- sd(lowg_lowI$Tbill)
+gisd_inflation <- sd(lowg_lowI$Inflation)
+gisd_index <- sd(lowg_lowI$ISMNO.Index)
+
+#sharpe ratio
+gisr_stocks <- gi_stocks/gisd_stocks
+gisr_bonds <- gi_bonds/gisd_bonds
+gisr_gold <- gi_gold/gisd_gold
+gisr_commodities <- gi_commodities/gisd_commodities
+gisr_tbill <- gi_tbill/gisd_tbill
+gisr_inflation <- gi_inflation/gisd_inflation
+gisr_index <- gi_index/gisd_index
+gisr_SR <- c(gisr_stocks, gisr_bonds, gisr_gold, gisr_commodities)
+
+gi_mean_returns
+gisr_SR
+
+```
+
+
+```{r}
+#Low growth, High inflation
+lowg_highI <- subset(dt, dt$INF2GRW1 == 1)
+
+#monthly nominal returns
+gI_stocks <- mean(lowg_highI$Stocks)
+gI_bonds <- mean(lowg_highI$Bonds)
+gI_gold <- mean(lowg_highI$Gold)
+gI_commodities <- mean(lowg_highI$Commodities)
+gI_tbill <- mean(lowg_highI$Tbill)
+gI_inflation <- mean(lowg_highI$Inflation)
+gI_index <- mean(lowg_highI$ISMNO.Index)
+
+#Standard Deviation
+gIsd_stocks <- sd(lowg_highI$Stocks)
+gIsd_bonds <- sd(lowg_highI$Bonds)
+gIsd_gold <- sd(lowg_highI$Gold)
+gIsd_commodities <- sd(lowg_highI$Commodities)
+gIsd_tbill <- sd(lowg_highI$Tbill)
+gIsd_inflation <- sd(lowg_highI$Inflation)
+gIsd_index <- sd(lowg_highI$ISMNO.Index)
+
+#Sharpe Ratio
+gIsr_stocks <- gI_stocks/gIsd_stocks
+gIsr_bonds <- gI_bonds/gIsd_bonds
+gIsr_gold <- gI_gold/gIsd_gold
+gIsr_commodites <- gI_commodities/gIsd_commodities
+gIsr_tbill <- gI_tbill/gIsd_tbill
+gIsr_inflation <- gI_inflation/gIsd_inflation
+gIsr_index <- gI_index/gIsd_index
+```
+
+
+```{r}
+#high growth, low inflation
+highg_lowi <- subset(dt, dt$INF2GRW1 == 1)
+
+#monthly nominal returns
+Gi_stocks <- mean(highg_lowi$Stocks)
+Gi_bonds <- mean(highg_lowi$Bonds)
+Gi_gold <- mean(highg_lowi$Gold)
+Gi_commodities <- mean(highg_lowi$Commodities)
+Gi_tbill <- mean(highg_lowi$Tbill)
+Gi_inflation <- mean(highg_lowi$Inflation)
+Gi_index <- mean(highg_lowi$ISMNO.Index)
+
+#standard deviation
+Gisd_stocks <- sd(highg_lowi$Stocks)
+Gisd_bonds <- sd(highg_lowi$Bonds)
+Gisd_gold <- sd(highg_lowi$Gold)
+Gisd_commodities <- sd(highg_lowi$Commodities)
+Gisd_tbill <- sd(highg_lowi$Tbill)
+Gisd_inflation <- sd(highg_lowi$Inflation)
+Gisd_index <- sd(highg_lowi$ISMNO.Index)
+
+#Sharpe Ratio
+Gisr_stocks <- Gi_stocks/Gisd_stocks
+Gisr_bonds <- Gi_bonds/Gisd_bonds
+Gisr_gold <- Gi_gold/Gisd_gold
+Gisr_commodities <- Gi_commodities/Gisd_commodities
+Gisr_tbill <- Gi_tbill/Gisd_tbill
+Gisr_inflation <- Gi_inflation/Gisd_inflation
+Gisr_index <- Gi_index/Gisd_index
+```
+
+```{r}
+#High growth, High Inflation
+highg_highi <- subset(dt, dt$INF2GRW2 == 1)
+
+#monlthy nominal returns
+GI_stocks <- mean(highg_highi$Stocks)
+GI_bonds <- mean(highg_highi$Bonds)
+GI_gold <- mean(highg_highi$Gold)
+GI_commodities <- mean(highg_highi$Commodities)
+GI_tbill <- mean(highg_highi$Tbill)
+GI_inflation <- mean(highg_highi$Inflation)
+GI_index <- mean(highg_highi$ISMNO.Index)
+
+#standard deviation
+GIsd_stocks <- sd(highg_highi$Stocks)
+GIsd_bonds <- sd(highg_highi$Bonds)
+GIsd_gold <- sd(highg_highi$Gold)
+GIsd_commodities <- sd(highg_highi$Commodities)
+GIsd_tbill <- sd(highg_highi$Tbill)
+GIsd_inflation <- sd(highg_highi$Inflation)
+GIsd_index <- sd(highg_highi$ISMNO.Index)
+
+#Sharpe Ratio
+GISR_stocks <- GI_stocks/GIsd_stocks
+GISR_bonds <- GI_bonds/GIsd_bonds
+GISR_gold <- GI_gold/GIsd_gold
+GISR_commodites <- GI_commodities/GIsd_commodities
+GISR_tbill <- GI_tbill/GIsd_tbill
+GISR_inflation <- GI_inflation/GIsd_inflation
+GISR_index <- GI_index/GIsd_index
+```
+
+```{r}
+#Take nominal returns and put them into matrix
+
+stocks <- highg_highi$Stocks
+bonds <- highg_highi$Bonds
+gold <- highg_highi$Gold
+commodities <- highg_highi$Commodities
+allreturns_matrix <- data.frame(stocks, bonds, gold, commodities)
+allreturns_matrix
+length(allreturns_matrix)
+```
+
+```{r}
+#1b) Calculate VcV matrix with 4 Risky assets
+
+vCV_matrix <- cov(allreturns_matrix)
+vCV_matrix
+```
+
+```{r}
+#1C) maximal sharpe ratio portfolio
+
+#creating a list of Random Weights
+wts <- runif(n=length(allreturns_matrix))
+print(sum(wts))
+
+```
+
+```{r}
+#fix weights to sum to 1 
+
+wts <- wts/sum(wts)
+print(wts)
+sum(wts)
+allmeanreturns
+
+```
+
+```{r}
+#Calculate the E(r) of the maximum sharpe ratio portfolio
+
+#E(R) of portfolio
+MSR_port_returns <- sum(wts*allmeanreturns)
+
+
+#Standard Deviation
+MSR_port_SD <- sqrt(t(wts) %*% (vCV_matrix %*% wts))
+
+
+#Sharpe
+MSR_SR <- MSR_port_returns/MSR_port_SD
+
+print(weights)
+print(MSR_port_returns)
+print(MSR_port_SD)
+print(MSR_SR)
+```
+
+```{r}
+num_port <- 5000
+
+all_wts <- matrix(nrow = num_port, ncol = length(allreturns_matrix))
+
+MSRport_returns <- vector('numeric', length = num_port)
+
+MSRport_SD <- vector('numeric', length = num_port)
+
+MSRport_SR <- vector('numeric', length = num_port)
+
+length(allreturns_matrix)
+allmeanreturns
+```
+
+```{r}
+for(i in seq_along(MSRport_returns)) {
+  wts <- runif(length(allmeanreturns))
+  wts <- wts/sum(wts)
+  
+  #storing weight in matrix
+  all_wts[i,] <- wts
+  
+  #portfolio returns
+  MSR_ret <- sum(wts*allmeanreturns)
+  
+  #storing portfolio returns 
+  MSRport_returns[i] <- MSR_ret
+  
+  #creating and storing Portfolio SD
+  MSR_sd <- sqrt(t(wts) %*% (vCV_matrix %*% wts))
+  MSRport_SD[i] <- MSR_sd
+  
+  #creating and storing portfolio sharpe ratios
+  MSRSR <- MSR_ret/MSR_sd
+  MSRport_SR[i] <- MSRSR
+}
+
+```
+
+```{r}
+MSR_portfolio_value <- data.frame(Return = MSRport_returns, SD = MSRport_SD, SharpeRatio = MSRport_SR)
+MSR_portfolio_value
+```
+
+
+```{r}
+all_wts <- data.frame(all_wts)
+```
+
+```{r}
+#combine Weights and MSR_portfolio_value
+portfolio <- data.frame(cbind(all_wts, MSR_portfolio_value))
+view(portfolio)
+```
+
+```{r}
+head(portfolio)
+
+```
+```{r}
+colnames(portfolio) <- c("stocks", "Bonds", "Gold", "Commodities", "Return", "Standard Deviation", "Sharpe Ratio")
+head(portfolio)
+```
+
+```{r}
+##########Optimization FOR TABLE "dt"
+
+#finding the minimum Variance portfolio 
+
+min_var <- portfolio[which.min(portfolio$`Standard Deviation`),]
+
+# finding the maximum sharpe ratio portfolio
+
+max_sr <- portfolio[which.max(portfolio$`Sharpe Ratio`),]
+
+print(min_var)
+print(max_sr)
+```
+
+```{r}
+#DIRECTION 3
+
+A2 <- 2.8
+A3 <- 6.5
+A4 <- 10.5
+A5 <- 16.9
+gi_max_sr_var <- max_sr$`Standard Deviation`^2
+gi_max_sr_return <- max_sr$Return
+gi_AMVE1 <- gi_max_sr_return/(gi_max_sr_var*A1)
+gi_AMVE2 <- gi_max_sr_return/(gi_max_sr_var*A2)
+
+AMVE3_stocks <- gi_stocks/(gi_max_sr_var*A3)
+AMVE3_bonds <- gi_bonds/(gi_max_sr_var*A3)
+AMVE3_gold <- gi_gold/(gi_max_sr_var*A3)
+AMVE3_commodities <- gi_commodities/(gi_max_sr_var*A3)
+AMVE3_stocks
+AMVE3_bonds
+AMVE3_gold
+AMVE3_commodities
+#EXPECTED RETURN ON LOW GROWTH LOW INFLATION REGIME WITH A=6.5
+#CREATE VECTOR OF WEIGHTS
+AMVE3_weights <- c(AMVE3_stocks, AMVE3_bonds, AMVE3_gold, AMVE3_commodities)
+AMVE3_RF <- 1-sum(AMVE3_weights)
+AMVE3_weights <- c(AMVE3_stocks, AMVE3_bonds, AMVE3_gold, AMVE3_commodities, AMVE3_RF)
+AMVE3_weights
+
+
+
+#CREATE A VECTOR OF MEAN RETURNS UNDER gi Regime
+allmeanreturns_plusRF <- c(gi_stocks, gi_bonds, gi_gold, gi_commodities, gi_tbill)
+allmeanreturns_plusRF
+#MULTIPLY WEIGHTS TIMES E(R) OF EACH ASSET
+gi_AMVE3_regimeret <- sum(AMVE3_weights*allmeanreturns_plusRF)
+gi_AMVE3_regimeret
+```
+```{r}
+max_sr_var <- max_sr$`Standard Deviation`^2
+max_sr_return <- max_sr$Return
+
+#A=6.5 FOR LOW INFLATION HIGH GROWTH REGIME
+
+Gi_AMVE3_stocks <- Gi_stocks/(max_sr_var*A3)
+Gi_AMVE3_bonds <- Gi_bonds/(max_sr_var*A3)
+Gi_AMVE3_gold <- Gi_gold/(max_sr_var*A3)
+Gi_AMVE3_commodities <- Gi_bonds/(max_sr_var*A3)
+
+Gi_AMVE3_weights <- c(Gi_AMVE3_stocks, Gi_AMVE3_bonds, Gi_AMVE3_gold, Gi_AMVE3_commodities)
+Gi_AMVE3_RF <- 1-sum(Gi_AMVE3_weights)
+Gi_AMVE3_weights <- c(Gi_AMVE3_stocks, Gi_AMVE3_bonds, Gi_AMVE3_gold, Gi_AMVE3_commodities, Gi_AMVE3_RF)
+Gi_AMVE3_weights
+
+
+Gi_allmeanreturns_plusRF <- c(Gi_stocks, Gi_bonds, Gi_gold, Gi_commodities, Gi_tbill)
+
+Gi_AMVE3_regimeret <- sum(Gi_AMVE3_weights*Gi_allmeanreturns_plusRF)
+Gi_AMVE3_regimeret
+
+```
+```{r}
+
+#A=6.5 FOR LOW GROWTH HIGH INFLATION REGIME
+gI_AMVE3_stocks <- gI_stocks/(max_sr_var*A3)
+gI_AMVE3_bonds <- gI_bonds/(max_sr_var*A3)
+gI_AMVE3_gold <- gI_gold/(max_sr_var*A3)
+gI_AMVE3_commodities <- gI_commodities/(max_sr_var*A3)
+
+gI_AMVE3_weights <- c(gI_AMVE3_stocks, gI_AMVE3_bonds, gI_AMVE3_gold, gI_AMVE3_commodities)
+gI_AMVE3_RF <- 1-sum(gI_AMVE3_weights)
+gI_AMVE3_weights <- c(gI_AMVE3_stocks, gI_AMVE3_bonds, gI_AMVE3_gold, gI_AMVE3_commodities, gI_AMVE3_RF)
+gI_AMVE3_weights
+
+
+gI_allmeanreturns_plusRF <- c(gI_stocks, gI_bonds, gI_gold, gI_commodities, gI_tbill)
+
+gI_AMVE3_regimeret <- sum(gI_AMVE3_weights*gI_allmeanreturns_plusRF)
+gI_AMVE3_regimeret
+```
+
+```{r}
+#A=6.5 FOR HIGH GROWTH HIGH INFLATION
+
+GI_AMVE3_stocks <- GI_stocks/(max_sr_var*A3)
+GI_AMVE3_bonds <- GI_bonds/(max_sr_var*A3)
+GI_AMVE3_gold <- GI_gold/(max_sr_var*A3)
+GI_AMVE3_commodities <- GI_commodities/(max_sr_var*A3)
+
+GI_AMVE3_weights <- c(GI_AMVE3_stocks, GI_AMVE3_bonds, GI_AMVE3_gold, GI_AMVE3_commodities)
+GI_AMVE3_RF <- 1-sum(GI_AMVE3_weights)
+GI_AMVE3_weights <- c(GI_AMVE3_stocks, GI_AMVE3_bonds, GI_AMVE3_gold, GI_AMVE3_commodities, GI_AMVE3_RF)
+GI_AMVE3_weights
+
+
+GI_allmeanreturns_plusRF <- c(GI_stocks, GI_bonds, GI_gold, GI_commodities, GI_tbill)
+
+GI_AMVE3_regimeret <- sum(GI_AMVE3_weights*GI_allmeanreturns_plusRF)
+GI_AMVE3_regimeret
+```
+```{r}
+regime_returns <- c(gi_AMVE3_regimeret, gI_AMVE3_regimeret, Gi_AMVE3_regimeret, GI_AMVE3_regimeret)
+equal_weight <- c(.25, .25, .25, .25)
+
+Static_EWPortfolio<- sum(equal_weight*regime_returns)
+
+```
+
+```{r}
+#TILT PORTFOLIOS
+
+#4 sets of weights
+gi_TW <- c(0.5, 1/6, 1/6, 1/6)
+gI_TW <- c(1/6, 0.5, 1/6, 1/6)
+Gi_TW <- c(1/6, 1/6, 0.5, 1/6)
+GI_TW <- c(1/6, 1/6, 1/6, 0.5)
+
+Tilt_INF1GRW1 <- sum(gi_TW*regime_returns)
+Tilt_INF2GRW1 <- sum(gI_TW*regime_returns)
+Tilt_INF1GRW2 <- sum(Gi_TW*regime_returns)
+Tilt_INF2GRW2 <- sum(GI_TW*regime_returns)
+#TILTED PORTFOLIOS
+Tilt_INF1GRW1
+Tilt_INF2GRW1
+Tilt_INF1GRW2
+Tilt_INF2GRW2
+
+Tilt_matrix <- as.matrix(c(Tilt_INF1GRW1, Tilt_INF2GRW1, Tilt_INF1GRW2, Tilt_INF2GRW2))
+rownames(Tilt_matrix) <- c("Low I Low G", "High I Low G", "Low I High G", "High I High G")
+Tilt_matrix
+```
+
+
+
+
+
+
+
+
+
+
+DONT GO BELOW THIS.....
+#########
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+############################################################################################################3
+#TABLE lowg_lowI: Low growth, low inflation regime 
+
+gi_stocks <- lowg_lowI$Stocks
+gi_bonds <- lowg_lowI$Bonds
+gi_gold <- lowg_lowI$Gold
+gi_commodities <- lowg_lowI$Commodities
+gi_returns_df <- data.frame(gi_stocks, gi_bonds, gi_gold, gi_commodities)
+gi_returns_df
+```
+
+
+
+```{r}
+#Variance Covariance Matrix for Low growth, low inflation regime 
+gi_VCV_matrix <- cov(gi_returns_df)
+gi_VCV_matrix
+```
+
+```{r}
+#RANDOM WEIGHTS
+gi_wts <- runif(n=length(gi_returns_df))
+print(sum(gi_wts))
+
+
+#EQUAL TO 1
+gi_wts <- gi_wts/sum(gi_wts)
+print(gi_wts)
+sum(gi_wts)
+
+```
+```{r}
+#EXPECTED RETURN OF PORTFOLIO 
+gi_portfolio_return <- sum(gi_wts*gi_mean_returns)
+
+#SD OF PORTFOLIO
+gi_portfolio_SD <- sqrt(t(gi_wts) %*% (gi_VCV_matrix %*% gi_wts))
+
+#SHARPE RATIO 
+gi_SR <- gi_portfolio_return/gi_portfolio_SD
+```
+
+```{r}
+#CREATING EMPTY VECTORS
+all_wts <- matrix(nrow = num_port, ncol = length(gi_returns_df))
+
+giport_returns <- vector('numeric', length = num_port)
+
+giport_SD <- vector('numeric', length = num_port)
+
+giport_SR <- vector('numeric', length = num_port)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#Risk Aversion Scores for MVE Portfolio
+A1 <- 1.3
+MVE_var <- (max_sr$`Standard Deviation`)^2
+MVE_return <- (max_sr$Return)
+A1_MVE_weight <- MVE_return/(A1*MVE_var)
+A1_MVE_weight
+```
+```{r}
+Wa <- (vCV_matrix^-1*allmeanreturns)/A1
+Wa
+```
+

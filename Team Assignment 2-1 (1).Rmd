@@ -1,0 +1,223 @@
+---
+title: "Team Assignment 2"
+output: html_document
+---
+
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(moments)
+library(quantmod)
+library(rugarch)
+library(xts)
+library(nloptr)
+library(Matrix)
+library(RPostgres)
+```
+
+
+```{r}
+CalcVaRES <- function(r,alpha) {
+  VaR <- quantile(r,1-alpha)
+  ES  <- mean(r[r<VaR])
+  VaR_ES <- c(VaR,ES)
+  names(VaR_ES) <- c("VaR","ES")
+  return(VaR_ES)
+}
+```
+
+#Part 1 - R Code for Question 1
+```{r}
+fund8 = read.csv("C:/Users/Floris/Documents/fund_8.csv")
+pcfun <- function(X) {
+  df <- as.data.frame(X)
+  pc <- prcomp(X)
+  vname <- seq(1:length(pc$sdev))
+  eis <- data.frame( vname=vname,var=pc$sdev^2 / sum(pc$sdev^2) )
+  if (nrow(eis)>10) { eis <- eis[1:10,] }
+  vlevel <- as.character(seq(1:length(pc$sdev)))
+  eis$vname <- factor(eis$vname,levels=vlevel)
+  p <- ggplot(data=eis,aes(y=var)) +
+    geom_bar(aes(x=vname),stat="identity",col="grey",alpha=0.7) + 
+    ylim(0,1) +
+    xlab("Principal Component")+
+    ylab("Explained Variance") 
+  pcx <- as.data.frame(pc$x[,1:5])
+  cor_table <- matrix(rep(0,5*ncol(df)),nrow=ncol(df),ncol=5)
+  nobs <- nrow(X)
+  for (i in 1:ncol(df)) {
+    cor_pc <- cor(df[,i],pcx)
+    #    se_pc  <- sqrt((1-cor_pc)/(nobs-2))
+    #    tst_pc <- abs(cor_pc/se_pc)>2
+    cor_table[i,] <- cor_pc
+    #    tst_table[i,] <- tst_pc
+  }
+  se_table <- sqrt((1-cor_table)/(nobs-2))
+  tst_table<- cor_table/se_table
+  cor_table <- ifelse(abs(tst_table)>2,cor_table,0)
+  row.names(cor_table) <- colnames(X)
+  colnames(cor_table)  <- c("pc1","pc2","pc3","pc4","pc5")
+  pcout <- list(pc,eis,p,cor_table)
+  return(pcout)
+}
+
+Permno<-fund8$permno
+ntick <- length(Permno)
+#initialize WRDS data server connection
+wrds<-dbConnect(Postgres(),  
+                host='wrds-pgdata.wharton.upenn.edu',
+                port=9737,            
+                sslmode='require',
+                dbname='wrds',
+                user='tonyjyc',         
+                password='Tony19970125')
+# retrieve data from CRSP daily stock file
+crsp8 <- data.frame(permno=NA,date=NA,ret=NA)
+Date <- NA
+for (i in 1:nrow(fund8)) {
+  res <- dbSendQuery(wrds, paste0(" select permno, date, ret ",
+                                  " from crsp.dsf ",
+                                  " where permno = ", Permno[i]))
+  data <- dbFetch(res, n =-1)
+  dbClearResult(res)
+  Date <- c(Date,min(data$date))   ##start date for each ticker
+  crsp8 <- rbind(crsp8, data)
+}
+crsp8 <- crsp8[crsp8$date>=max(Date[-1]),]
+crsp8 <- crsp8[-1,]
+
+#PCA Analysis
+rdat8<-merge(crsp8,fund8,by="permno")
+logret<-log(1+rdat8$ret)
+rdat8<-mutate(rdat8,logret)
+X <- rdat8[,c("ticker","logret","date")]
+X<-X%>%pivot_wider(names_from = ticker,values_from=logret)
+X<-as.matrix(X[,-1])
+round(head(X),6)
+pc<-prcomp(na.omit(X), scale=TRUE)
+pcout<-pcfun(na.omit(X))
+pcout[[3]]+ggtitle("PC of fund 8 stocks")
+e1<-pcout[[2]]$var[1]
+round(e1,2)
+vr_pc1<-round(pcout[[4]],2)               # variance explained by PC1
+pc_1 <- pcout[[1]]$x[,1] 
+
+# we need another principal compenent since MGM can not explain more than 50% of the variance
+
+
+nsim <- 1000
+set.seed(123789)
+X2 <- as.matrix(X)
+row.names(X2) <- NULL
+e1vec <- rep(0,nsim)
+system.time(
+  for (i in 1:nsim) {
+    Xsim <- apply(X2,2,sample)
+    pc_sim <- prcomp(na.omit(Xsim))
+    e1vec[i] <- pc_sim$sdev[1]^2 / sum(pc_sim$sdev^2 )
+  }
+)
+round(min(e1vec),4)
+round(max(e1vec),4)
+noquote(sprintf(fmt="%s %6.2f","Bootstrap p-value = ",mean(e1vec>e1))) # bootstrap p-value of below .05 means the first principal component is statistically significant.
+```
+
+#Part 2 - R Code for Question 2
+```{r}
+df <- fread("C:/Users/Floris/Documents/Zacks_2019-12-31.csv")
+df
+```
+
+```{r}
+#2a
+df[is.na(df)] <- 0
+df$MarketCap <- df$SharesOut*df$Price
+for (i in 1:nrow(df)){
+  if (df$MarketCap[i] > 300000){
+    df$Category[i] <- "Mega"
+  }
+  else if (df$MarketCap[i] < 300000 && df$MarketCap[i] > 10000){
+    df$Category[i] <- "Large"
+  }
+  else if (df$MarketCap[i] < 10000 && df$MarketCap[i] > 2000){
+    df$Category[i] <- "Mid"
+  }
+  else if (df$MarketCap[i] < 2000 && df$MarketCap[i] > 300){
+    df$Category[i] <- "Small"
+  }
+  else if (df$MarketCap[i] < 300 && df$MarketCap[i] > 50){
+    df$Category[i] <- "Micro"
+  }
+  else if (df$MarketCap[i] < 50){
+    df$Category[i] <- "Nano"
+  }
+}
+zacks <- df[Ticker %in% fund8$ticker,]
+TotalMarketCap <- sum(zacks$MarketCap)
+MarketCapCategory <-unique(df$Category)
+wvector <- c(0)
+for (i in 1:length(MarketCapCategory)) {
+  wvector <- c(wvector,sum(zacks[zacks$Category == MarketCapCategory[i]]$MarketCap) / TotalMarketCap)
+}
+Weight <- wvector[-1]
+Weight <- round(Weight,4)
+answer2a <- data.frame(MarketCapCategory,Weight)
+answer2a
+```
+
+
+```{r}
+#2b
+zacks <- df[Ticker %in% fund8$ticker,]
+TotalMarketCap <- sum(zacks$MarketCap)
+UniqueSector <- unique(df$ZacksSector)
+wvector <- c(0)
+for (i in 1:length(UniqueSector)) {
+  wvector <- c(wvector,sum(zacks[zacks$ZacksSector == UniqueSector[i]]$MarketCap) / TotalMarketCap)
+}
+Weight <- wvector[-1]
+Weight <- round(Weight,4)
+answer2b <- data.frame(UniqueSector,Weight)
+answer2b
+```
+
+```{r}
+#2c
+zacks <- df[Ticker %in% fund8$ticker,]
+Beta_Vector <- c(0)
+for (i in 1:nrow(zacks)) {
+  Beta_Vector <- c(Beta_Vector,zacks$Beta[i] * fund8$weight[fund8$ticker == zacks$Ticker[i]])
+}
+Beta_Vector <- Beta_Vector[-1]
+Beta_Vector
+CAPM_Beta <- round(sum(Beta_Vector),4)
+CAPM_Beta
+```
+
+
+#Part 3 - R Code for Question 3
+```{r}
+dt3<- rdat8[,c("ticker","date","ret")]
+dt3<-dt3%>%pivot_wider(names_from = ticker,values_from=ret)
+w<-matrix(data=fund8$weight,nrow=21)
+ret_3<-as.matrix(dt3)
+ret_fund<-ret_3[,c(2:22)]%*%w
+
+### 10-day ahead VaR and ES at the 95% confidence level
+nsim <- 100000
+nper <- 10
+alpha <- 0.95
+sim <- rep(0,100000)
+set.seed(123789)
+posn <- seq(from=1,to=length(ret_fund)-nper+1,by=1)
+rpos <- sample(posn,nsim,replace=TRUE)
+for (i in 1:nper) {
+  sim <- sim+ret_fund[rpos]
+  rpos <- rpos+1
+}
+VaR_ES <- CalcVaRES(na.omit(sim),alpha)
+round(VaR_ES,6)
+```
+
+

@@ -1,0 +1,576 @@
+---
+title: "Case Study 2"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# How should we price homes in Seattle?
+
+## Goals (4 min)
+
+In the previous case, we learned how linear regression can be a powerful tool to understand the behavior of a variable of interest as being explained by other variables in our dataset. However, in many real instances, our data may not meet basic assumptions that one needs for a linear regression model to be suitable. In cases where linear regression is not *directly* applicable in these scenarios, we need to figure out how to go around this problem.
+
+In this case, you will learn:
+
+1. How to select and use appropriate variable transformations to correct our data such that it becomes applicable for linear regression
+2. How to decide whether the addition of predictor variables actually benefit the model or create overfitting
+3. How to further extend the applicability of linear models by taking into account non-linear interactions that can exist between the predictor variables
+```{r library, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(ggpubr)
+library(ggcorrplot)
+library(Hmisc)
+library(MASS)
+```
+
+## Introduction (5 min)
+
+**Business Context.** You have been hired as a data scientist by a large real estate company in their Seattle office. Your job is to assist Seattle residents willing to sell their home with determining an optimal price to sell their property at in order to maximize their proceeds while still being able to find willing buyers. To do this, the firm would like you to build a pricing model for Seattle real estate, in order to maximize the probability of helping residents close sales (and thus maximizing commissions for the firm).
+
+**Business Problem.** Your task is to **build a model that uses past sales data in Seattle to recommend an optimal sell price for any particular property**.
+
+**Analytical Context.** The provided dataset was retrieved from Kaggle (https://www.kaggle.com/harlfoxem/housesalesprediction) and includes sales prices of houses in the state of Washington (King county, where Seattle is located) between May 2014 and May 2015. As we have learned, the primary tool to predict a response variable is the multiple regression model. However, sometimes the assumptions of a linear model are not met by our data. We will learn a set of strategies to mitigate some common issues that appear during regression analysis.
+
+The case is structured as follows: you wil (1) conduct basic EDA of some of the variables to determine that standard linear regression is not sufficient; (2) learn about variable transformations and use these to improve the initial model; and finally (3) learn how to incorporate interaction effects (which are themselves a form of variable transformation involving two or more variables) into our model.
+
+## Data exploration (15 min)
+
+Let's start by reviewing the columns of the dataset and what they mean:
+
+1. **id**: identification for a house
+2. **date**: date house was sold
+3. **price**: price house was sold at
+4. **bedrooms**: number of bedrooms
+5. **bathrooms**: number of bathrooms
+6. **sqft_living**: square footage of the home
+7. **sqft_lot**: square footage of the lot
+8. **floors**: total floors (levels) in house
+9. **waterfront**: whether or not the house has a view of a waterfront
+10. **view**: an index from 0 to 4 of how good the view from the property is
+11. **condition**: how good the condition of the house is
+12. **grade**: overall grade given to the housing unit, based on King County grading system
+13. **sqft_above**: square footage of the house apart from basement
+14. **sqft_basement**: square footage of the basement
+15. **yr_built**: year house was built
+16. **yr_renovated**: year house was renovated
+17. **zipcode**: zipcode of the house
+18. **lat**: latitude coordinate of the house
+19. **long**: longitude coordinate of the house
+
+(See also [here](https://www.slideshare.net/PawanShivhare1/predicting-king-county-house-prices) for a complete explanation of the columns.)
+
+```{r}
+houses <- read.csv("kc_house_data.csv")
+```
+
+```{r}
+head(houses)
+```
+
+### Exercise 1: (10 min)
+
+#### 1.1
+
+Analyze the distribution of house prices using `.describe()` and a histogram plot. What do you see? Based solely on these results, would you say that the distribution of prices is Gaussian?
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+describe(houses$price)
+```
+
+
+```{r warming=FALSE, message=FALSE}
+ggplot(houses, aes(x=price, fill="#FF6666")) +
+  geom_histogram(aes(y=..density..),color="white",alpha=0.7) +
+  scale_x_continuous(labels=function(x) {x/10^6})+
+  scale_y_continuous(labels=function(y) {sprintf("%.1f", round(y*10^6,3))}) +
+  geom_density(alpha=0, color="black") +
+  labs(title="Histogram of Prices") +
+  theme(legend.position="none", plot.title=element_text(hjust=0.5))
+  
+```
+
+From the histogram we can see a wide range in the prices of houses. For instance, there is a house that is worth almost \\$8 million, which is around 20 standard deviations away from the mean of \\$540,000. This is quite large considering that in a Gaussian distribution 3 standard deviations from the mean is enough to contain 99.7% of the population. However, from the plot it is not easy to see whether we have many houses exceeding the 3 standard deviation mark or if we just have a couple of outliers that are skewing the plot. 
+
+#### 1.2
+
+One way to assess if data comes from a particular given distribution is by drawing a **Quantile-Quantile plot** (QQ-plot). In a QQ-plot, the quantiles of the data are plotted against the quantiles of the desired distribution. In principle, if the resulting plot is far from being the identity (i.e. the line $y=x$), we can say that our data does not follow the desired distribution.  
+
+Use the function ```stats.probplot(x, dist="norm",plot=plt)``` to verify if the prices of the houses follow a Gaussian distribution.
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+ggplot(houses, aes(sample=price)) +
+  stat_qq(color="dodgerblue4") + 
+  stat_qq_line(color="red") +
+  scale_y_continuous(labels=function(y){y/10^6}) +
+  labs(title="QQ Plot for Prices", y="Ordered Values") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+The distribution does not look Gaussian. Looking at both the QQ plot and the histogram, we can see that the distribution of our data is heavily skewed.
+
+### Exercise 2: (5 min)
+
+Analyze the relationship between house prices and price per square foot of living space. What can you conclude? (Hint: use the `lmplot()` function in the `seaborn` library.)
+
+**Answer.** We can create a regression plot to visualize this relationship:
+
+```{r}
+ggplot(houses, aes(x=sqft_living, y=price)) +
+  geom_point(color="dodgerblue4") + 
+  labs(title="Price vs. Sqft_living") +
+  geom_smooth(formula=y~x, method=lm, color="red", level=0.95, se=FALSE) +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(y){y/10^6})
+```
+
+Given the way that house price vs. price per square foot seems to "fan out", we see that the relationship does not appear to be linear. In fact, it is not immediately obvious what sort of relationship is exhibited at all here.
+
+## Variable transformation (40 min)
+
+We have seen in Exercise 1 that the distribution of house prices is not Gaussian, and that this may be contributing to the "fanning out" effect we observed in Exercise 2. We want to find a way to remove the "fanning out" effect, as it implies that a linear fit becomes less and less suitable, with higher and higher variance from the line of best fit for large values of the predictor and response variables. A common method of addressing this issue is to transform the response variable and/or the predictor variable. Such a **variable transformation** involves applying a known function to one or more of these variables to achieve conditions that are suitable for the application of a linear model.
+
+Typical mathematical functions used to transform variables include powers (quadratic, cubic, square root, etc.), logarithms, and trigonometric functions. Let's start with the logarithmic transformation to see if we can achieve some results.
+
+### Exercise 3: (5 min)
+
+Take the logarithm of house prices and create plots to ascertain if this makes the distribution of the transformed variable roughly Gaussian.
+
+**Hint:** Use the function ```np.log```.
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+ggplot(houses, aes(sample=log(price))) +
+  stat_qq(color="dodgerblue4") + 
+  stat_qq_line(color="red") +
+  labs(title="QQ Plot for log(Prices)", y="Ordered values") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+```{r}
+ggplot(houses, aes(log(price))) +
+  geom_histogram(aes(y=..density..), 
+                 bins=50, 
+                 fill="dodgerblue4", 
+                 alpha=0.6, 
+                 color="white") +
+  geom_density(adjust=3)
+```
+```{r}
+describe(houses$price)
+```
+
+We can see from both the QQ plot and the histogram that the distribution is far closer to normal.
+
+### Building a linear model with transformed variables (15 min)
+
+Of course, we aren't just restricted to applying the logarithmic transformation to house prices; we can do it to any other variable in our dataset. Let's transform both house prices and price per square foot by this method and interpret the resulting linear model:
+
+```{r}
+m1 <- lm(log(price) ~ log(sqft_living), data=houses)
+summary(m1)
+```
+
+We have to be mindful of how we interpret the coefficients. Although we could say that our results tell us that a 1 unit increase in the logarithm of living space will result in a 0.836 increase in the logarithm of the price, this is a very mechanical and not at all intuitive interpretation.
+
+Mathematics can help us come up with a more intuitive interpretation. Let us denote by $P$ and $S$ the price and square footage of a house. Then, the fit our above model has come up with is 
+
+$$
+\begin{aligned}
+\log(P)&=0.84 \log(S)+6.73,\\
+P&=e^{6.74}S^{0.84}.\\
+\end{aligned}
+$$
+
+This is a nonlinear relationship, so it's not as straightforward as saying "increasing $S$ by 1 means that $P$ goes up by $x$". However, we can try reframing this in percentage terms; i.e. how does a 1 percent increase in $S$ affect price? We can see this by calculating the price $P_0$ of a house with $S_0=(1.01)S$ square feet using our model:
+
+$$
+\begin{aligned}
+P_0&=e^{6.74}S_0^{0.84},\\
+&=(e^{6.74}S^{0.84})(1.01)^{0.84},\\
+&\approx (1.0084) P. \\
+\end{aligned}
+$$
+
+Thus, a 1 percent increase in living space results in a 0.84 percent increase in price. This percentage vs. percentage change comparison is known as **elasticity**.
+
+Let's now build a linear model where the logarithmic transform is only applied to the house prices:
+
+```{r}
+m2 <- lm(log(price)~sqft_living, data=houses)
+summary(m2)
+```
+
+The interpretation of the regression coefficient is once again different. We interpret the coefficient as a **semi-elasticity**, where an absolute increase in `sqft_living` (because it has not had the logarithm function applied to it) corresponds to a percentage increase `price`:
+
+$$
+\begin{aligned}
+\begin{aligned}
+\log(P)&=0.0004 S+12.12,\\
+P&=e^{12.12}e^{0.0004S},\\
+\end{aligned} \quad  & \text{thus, } \quad
+\begin{aligned}
+P_0&=e^{12.12}e^{0.0004(S+1)},\\
+P_0&=e^{0.0004}P\approx (1.0004)P.\\
+\end{aligned}
+\end{aligned}
+$$
+
+Specifically, here we can say that an increase in living space by 1 square foot leads to a 0.04% percent increase in price.
+
+### Exercise 4: (10 min)
+
+Below we have used the ```sns.regplot()``` function (similar to ```sns.lmplot()```) to plot the ```log_price``` of houses against ```log_sqrt_living``` and ```sqrt_living```.  From these plots, which of the two linear models above is "more linear"?
+
+
+```{r}
+g1 <- ggplot(houses, aes(x=log(sqft_living), y=log(price))) +
+  geom_point(color="dodgerblue4",size=0.7) + 
+  labs(title="Log(price) vs. Log(sqft_living)") +
+  geom_smooth(formula=y~x,method=lm, color="red") +
+  theme(plot.title=element_text(hjust=0.5))
+
+g2 <- ggplot(houses, aes(x=sqft_living, y=log(price))) +
+  geom_point(color="dodgerblue4", size=0.7) + 
+  labs(title="Log(price) vs. sqft_living") +
+  geom_smooth(formula=y~x,method=lm, color="red") +
+  theme(plot.title=element_text(hjust=0.5))
+
+ggarrange(g1, g2, ncol=2,nrow=1)
+```
+
+**Answer.** One possible solution is given below:
+
+We can see from these plots that the data points of the log-log model cluster more uniformly around the line of best fit across different levels of the predictor variable as compared to the other model, suggesting that the log-log model is more linear.
+
+### Box-Cox transformation (5 min)
+
+Logarithmic transformations are just one of the possible transformations that we discussed. Earlier, we mentioned powers (e.g. squares, cubes, square roots, etc.) as well as trigonometric functions. In some cases, choosing a transformation can be straightforward (e.g. the logarithm because it is easily interpretable); other times, it is much more difficult. A formal way to decide on which transformation to use is to estimate the coefficient $\lambda$ of the Box-Cox transformation:
+
+$$BC(\lambda) = \frac{Y^\lambda-1}{\lambda} $$
+
+If the estimate of $\lambda$ is close to 2, we can use the quadratic transformation; if it is close to 0.5, the square root transformation; if it is close to zero or less than zero (negative), the logarithmic transformation; etc. In our case, we have:
+
+```{r}
+bc <- boxcox(lm(price~sqft_living, data=houses))
+optimal_lambda <- bc$x[which(bc$y == max(bc$y))]
+round(optimal_lambda, 2)
+# since the result is very close to zero, which indicates a log transformation 
+```
+
+This is less than zero, so it would seem that using the logarithmic transformation is sensible.
+
+## Multiple linear regression with transformed variables (30 min)
+
+Of course, as we have seen from the previous case, it doesn't make sense to restrict ourselves to modeling house prices based on only one predictor variable. Let's add in several more variables, some transformed and some not:
+
+### Exercise 5: (5 min)
+
+Fit a linear model of log `price` vs. log `sqft_living`, log `sqft_lot`, `bedrooms`, `floors`, `bathrooms`, `waterfront`, `condition`, `view`, `grade`, `yr_built`, `lat`, and `long`. Provide interpretations for the coefficients of log `sqft_living` and `waterfront`.
+
+**Answer.** One possible solution is given below:
+
+
+```{r}
+m3 <- lm(log(price) ~ 
+           log(sqft_living)+ log(sqft_lot) +bedrooms + floors + bathrooms +factor(waterfront) + condition  + factor(view) + grade + yr_built + lat + long, 
+         data = houses)
+summary(m3)
+```
+
+All the variables are statistically significant (all $p$ - values less than 0.01). Overall this linear model explains over 76 percent of the total variability of the response variable.
+
+An increase of one percent in living space leads to an increase of 0.4067 percent in price. A property with a water view has an increase in price of 39.94 percent (in fact, $e^{0.3994}\approx 1.48$, an increase of almost $48\%$).
+    
+It is worth to note that our model also states that for each additional bedroom, the price of a house *decreases* by $2\%$. This might be due to the fact that our model takes into account many variables that already explain the price of houses much better than the number bedrooms (such as square footage, water view and location). Thus, the number of bedrooms may become less informative when predicting the price of a house.
+
+What other factors may impact the price that we have left out? Some that may play a role include proximity to services (hospitals, schools, commercial areas, movie theaters, metro stops...), crime rates, etc. Our dataset does not have a comprehensive list of possible factors; however, we do have some variables that would be interesting to investigate further.
+
+In general, house prices change depending on the location. Two houses with comparable features can be priced very differently depending on the neighborhood and geographic position. In this dataset, we have zipcode and geographic coordinates. Let us start by taking a look at the relationship between latitude and prices.
+
+### Exercise 6: (5 min)
+
+In the plot below we can see the relationship between latitude and the logarithm of house prices. What do you observe?
+
+```{r}
+ggplot(houses, aes(lat, log(price))) +
+  geom_point(color="dodgerblue4", alpha=0.6, size=0.5) +
+  labs(title="Log Price against Latitude", x="latitude", y="Log Price") +
+  theme(plot.title=element_text(hjust=0.5))
+```
+
+**Answer.** One possible solution is shown below:
+
+We can see that there is a nonlinear relationship between latitude and price. Based on the concave curvature in the right half of the plot above, it seems that adding a quadratic term would be able to help us explain this.
+
+### Exercise 7: (15 min)
+
+#### 7.1
+
+Add the square of the latitude as an additional predictor to the model in Exercise 5. Is the term significant? What can you say about the $R^2$ of this model?
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+df <- houses
+df["lat_2"] <- houses$lat^2
+m4 <- lm(log(price) ~ log(sqft_living)+ log(sqft_lot) + bedrooms + floors + bathrooms+ condition + factor(waterfront) + factor(view) + grade + yr_built + lat + lat_2 + long, data=df)
+summary(m4)
+```
+
+We can see that the coefficient is highly significant. The R-squared has increased by about 1%.
+
+#### 7.2
+
+One of the properties of $R^2$ is that it can never decrease when the set of predictors is increased. In other words, there is no penalty for continuing to add variables to the model. Why do you think this may be a drawback of $R^2$? How would you go about deciding the correct set of predictors to use?
+
+**Answer.** One possible solution is shown below:
+
+Since there is no penalty for continuing to add variables, we may end up using variables that have little explanatory power. Consequently, selecting predictor variables trying to maximize  $R^2$  can lead to choosing unnecessarily complex and redundant models. This may lead to overfitting, thus losing the applicability of the model. Remember, "if we torture our data enough, it will talk". 
+
+One way we could avoid overfitting is by implementing a measure that penalizes for new added variables which lead to a small increase in $R^2$. We may try to create several linear models by removing one (or a subset) of the variables at a time and see how the $R^2$ behaves after the removal. If $R^2$ decreases below certain threshold we may consider keeping the corresponding variable(s), otherwise we drop the variable(s) as being not informative enough.
+
+#### 7.3
+
+There are several model selection criteria that quantify the quality of a model by managing the tradeoff between goodness-of-fit and simplicity. The most common one is the **AIC (Akaike Information Criterion)**. The AIC penalizes the addition of more terms to a model, so in order for an updated model to have a better AIC, its $R^2$ needs to improve by at least as much as the additional imposed penalty. **Given several models**, the one with the lowest AIC is the recommended one.
+
+For now, do not worry about the technical details behind AIC (although you are free to look them up yourself). In future cases on **regularization**, you will learn more about the rationale behind why these sorts of estimators matter and how to construct and use them in model-building.
+
+Use the AIC score (you can look up this in the output of the model summary,  or by simply using ```mod.aic```) to evaluate whether or not the fit with the added square term is better than the previous model.
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+AIC(m3)
+```
+
+```{r}
+AIC(m4)
+```
+
+Comparing model 3 and model 4 we can see that the AIC has improved from 2597.253 to 1138.814.
+
+## Modeling interaction effects (50 min)
+
+As we have seen during the EDA cases, interaction effects can complicate the perceived effect of the predictor variables on the outcome of interest. Let's dig into potential interactions by looking at two of the predictors in tandem: `waterfront` and geographic position (`lat` and `long`). Specifically, is the effect of geographic position different among the houses that have a waterfront view vs. those that do not?
+
+### Exercise 8: (15 min)
+
+#### 8.1
+
+Below, we have drawn a plot of the relationship between `Log-price` and `lat` using  `lmplot()`. This plot fits two separate regression lines for houses that do and do not have a `waterfront` view. What do you see? Is the relationship the same or different?
+
+```{r}
+df <- houses
+ggplot(df, aes(lat, log(price),color=factor(waterfront))) +
+  geom_point(size=0.1) +
+  geom_smooth(method="lm") +
+  scale_color_manual(values=c("dodgerblue4", "orange")) +
+  labs(color= "waterfront", title="Log-price vs. Latitude", x="latitude") +
+  theme(legend.position=c(0.08,0.85), plot.title=element_text(hjust=0.5)) 
+```
+
+**Answer.** One possible solution is shown below:
+
+We see that the effects of the geographic position are more pronounced for the subgroup of houses with a waterfront view. In other words, the line has a steeper slope and thus for each degree of increment in latitude, the price will increase at a higher rate for houses with waterfront view, than the houses without it.
+
+#### 8.2
+
+Now, we see a plot that fits separate regression lines for houses with different `view` indexes i.e. how good the view of the property was. What do you see? Is the relationship the same or different?
+
+```{r}
+df <- houses
+ggplot(df, aes(lat, log(price),color=factor(view))) +
+  geom_point(size=0.2) +
+  geom_smooth(method="lm") +
+  labs(color= "view", title="Log-price vs. Latitude", x="latitude") +
+  theme(legend.position=c(0.08,0.75), plot.title=element_text(hjust=0.5)) 
+```
+
+**Answer.** One possible solution is shown below:
+
+We see that houses with better view index tend to have higher prices. However, the slopes of the different regression lines seem almost the same. Thus, a degree of increment in `lat` increases the price of a house at (almost) the same rate, disregarding how good the `view` of the house was. Here, we will say that the view of the house does *not* interact with the relationship between price and latitude.
+
+We can verify the findings of Exercise 8 by adding **interaction terms** to our linear model. The interaction term between `lat` and `waterfront` can be added to our model using the syntax `lat*C(waterfront)`:
+
+
+```{r}
+df <- houses
+m5 <- lm(log(price)~ lat*factor(waterfront), data=df)
+summary(m5)
+```
+
+```{r}
+exp(0.8)
+```
+
+
+The way we read the interaction effect given by the summary of ```model_5.1``` is as follows:
+    
+1. `C(waterfront)[T.1]` reads in the same way as before. Here the model states that an adjustment of $102\%$ should be done to the price of a house having a waterfront view. We saw  before that `waterfront` had a positive impact in the price of the house, however our model is probably given more weight to other factors (compare the intercept with previous models) and then correcting this over-estimation.
+
+2. `lat` and `lat:C(waterfront)[T.1]` reads as follows. For each degree of increment in latitude, the price of the house should increase by $1.70\%$ among houses that do not have waterfront and by $1.70+2.17\approx 4\%$ among houses that do have waterfront.
+
+### Exercise 9: (5 min)
+
+Now, consider a model with an interaction term between `lat` and `view`. What do you see? Do these results agree with your findings from Exercise 8.2? 
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+df <- houses
+m5_2 <- lm(log(price)~ lat*factor(view), data=df)
+summary(m5_2)
+```
+
+The summary shows some interaction between `lat` and `view`, however most of these are *not* statistically significant. There is some interaction when the houses have a `view` index of 4 (which can also be seen by looking at the slope of the purple line in Exercise 8), however it is reasonable to say that there is very little statistical evidence of an interaction between `lat` and `view` variables. 
+
+### Incorporating interaction effects into a linear model (15 min)
+
+Of course, the above methodology is very inefficient for two reasons:
+
+1. It can only incorporate one interaction effect at a time.
+2. It requires fitting multiple linear regression models, depending on the value(s) of the interacting term.
+
+Let's start with our base model which includes all of the other variables we have discussed before, along with separate fixed effects for `waterfront`. In addition, let us add to the model a `zipcode` variable and a new variable `renovated` indicating whether the house was previously renovated or not:
+
+
+```{r}
+df <- houses
+df["lat_2"] <- houses$lat^2
+df["renovated"] <- houses$yr_renovated >0
+m6 <- lm(log(price) ~ log(sqft_living)+ log(sqft_lot) + bedrooms + floors + bathrooms+ condition + factor(waterfront) + factor(view) + grade + yr_built + lat + lat_2 + long + factor(zipcode) + factor(renovated), data=df)
+summary(m6)
+```
+
+
+```{r}
+df <- houses
+df["lat_2"] <- houses$lat^2
+df["renovated"] <- houses$yr_renovated >0
+m7 <- lm(log(price) ~ log(sqft_living)*factor(renovated) + log(sqft_lot) + bedrooms + floors + bathrooms + condition + lat*factor(waterfront) + factor(view) + grade + yr_built + lat_2 + long + factor(zipcode), data=df)
+summary(m7)
+```
+
+```{r}
+AIC(m6)
+```
+
+```{r}
+AIC(m7)
+```
+
+
+
+We can see that both the effect and renovations have a positive impact on price. The effect of a waterfront view is 46.25 percent on prices of comparable homes, while the effect of renovations is 5.794 percent. So far we have looked at global effects of predictors, irrespective of the levels of the other variables. However we might ask, is the effect of a waterfront view different for houses that were recently renovated? To answer this question we need to add an interaction term.
+
+
+```{r}
+df <- houses
+df["lat_2"] <- houses$lat^2
+df["renovated"] <- houses$yr_renovated >0
+m8 <- lm(log(price) ~ log(sqft_living)*factor(waterfront) + log(sqft_living)* factor(renovated) + log(sqft_lot) + bedrooms + floors + bathrooms + factor(waterfront) + condition + factor(view) + grade + yr_built + lat + lat_2 + long + factor(zipcode), data=df)
+summary(m8)
+```
+```{r}
+AIC(m7)
+```
+
+```{r}
+AIC(m8)
+```
+
+```{r}
+summary(m7)$r.squared
+```
+
+
+### Exercise 10: (15 min)
+
+Our reference model (mod7) contained the following predictors: 
+`bedrooms`,`floors`, `bathrooms`,`condition`,`C(view)`,`grade`,`yr_built`, `long`, `log(sqft_living) * C(renovated)`, `lat * C(waterfront)`, `I(lat**2)`, `log(sqft_lot)` and `C(zipcode)`. The AIC for this model was $-12045.34$ and the $R^2$ is $0.88$.
+
+Expand this model above by doing the following:
+
+1. Add a term which accounts for the square of the year the house was built
+2. Add an interaction term for the presence of a basement in affecting the relationship between the longitude coordinate and the price of a house
+
+Compare the model fit and AIC with the previous model.
+
+**Answer.** One possible solution is shown below:
+
+```{r}
+df <- houses
+df["lat_2"] <- houses$lat^2
+df["yr_built_2"] <- houses$yr_built^2
+df["renovated"] <- houses$yr_renovated >0
+m9 <- lm(log(price) ~ log(sqft_living)*factor(renovated) + log(sqft_lot) + bedrooms + floors + bathrooms + condition + factor(view) + grade + yr_built + lat*factor(waterfront) + lat_2 + long + factor(zipcode) + yr_built_2, data=df)
+summary(m9)
+```
+
+```{r}
+AIC(m9)
+```
+
+
+```{r}
+# built dummy variable to separate houses with a basement and houses with no basement
+df <- houses
+df["lat_2"] <- houses$lat^2
+df["renovated"] <- houses$yr_renovated >0
+df['has_basement'] <- houses$sqft_basement > 0 
+```
+
+```{r}
+# estimate a model with an interaction between the longitude coordinate 
+# and the presence of a basement.
+
+m10 <- lm(log(price) ~ log(sqft_living)*factor(renovated) + log(sqft_lot) + bedrooms + floors + bathrooms + condition + factor(view) + grade + yr_built + lat *factor(waterfront) + lat_2 + long + factor(zipcode) + has_basement*long, data=df)
+summary(m10)
+```
+
+The effects are significant in both cases. Both models improve the fit of our reference models, but the addition of a square term in the building year has a stronger impact compared to the interaction between basement and longitude.
+
+```{r}
+# the r-squared results
+r7 <- summary(m7)$r.squared
+r9 <- summary(m9)$r.squared
+r10 <- summary(m10)$r.squared
+
+# the aic results
+aic7 = AIC(m7)
+aic9 = AIC(m9)
+aic10 = AIC(m10)
+
+print("-------------- R Squared results --------------")
+print(paste("Model 7 -", r7, sep=" "))
+print(paste("Model 9 -", r9, sep=" "))
+print(paste("Model 10 -", r10, sep=" "))
+print("\n----------------- AIC results -----------------")
+print(paste("AIC 7 -", aic7, sep=" "))
+print(paste("AIC 9 -", aic9, sep=" "))
+print(paste("AIC 10 -", aic10, sep=" "))
+```
+
+From these results, model 9 seems to be the best choice for us!
+
+## Conclusions (5 min)
+
+In this case, we applied various types of transformations to the predictor and response variables to improve the quality of our linear modeling. In particular, we found that fitting the logarithm of house prices allowed us to get better results. Using our understanding of transformations, we were able to effectively model nonlinear relationships, such as the quadratic relationship between latitude and the log of price. Finally, we tied in our understanding of interaction effects from previous EDA cases in order to directly model and quantify the interaction of renovation and waterfront status on square footage.
+
+## Takeaways (5 min)
+
+Variable transformations are a powerful technique to improve the quality of our linear models. In particular:
+
+1. Transforming the dependent variable can improve linearity and resolve the problem of uneven variance around the line of best fit.
+2. Transforming the independent variables can be useful to improve the quality of the fit, capture nonlinear relationships between the independent and response variables, and test a wider range of hypotheses.
+3. Since $R^2$ always increase with the addition of predictor variables, we should be careful not to overfit our model by adding variables that provide little explanatory information. We can use some indicators, such as the AIC Score, to help us decide if the added variables do benefit our model.
+4. Interaction terms are a specific type of variable transformation, involving the product of two other independent variables. They can capture dependencies in the relationship between a predictor variable and the response variable on the value of a third variable.
+
