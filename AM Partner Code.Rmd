@@ -1,0 +1,1127 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r}
+library(data.table)
+library(tidyverse)
+library(ggmap)
+library(dplyr)
+library(rgdal)
+library(raster)
+library(sf)
+library(grid)
+library(ggpubr)
+install.packages("xlsx")
+install.packages("datasets")
+library(datasets)
+library(ggplot2)
+install.packages("gsubfn")
+install.packages("proto")
+library(gsubfn)
+library(proto)
+install.packages("janitor")
+library(janitor)
+install.packages("GGally")
+library(GGally)
+install.packages("regclass")
+library(regclass)
+library(stringr)
+library(corrplot)
+install.packages("RColorBrewer")
+library(RColorBrewer)
+library(leaps)
+install.packages("tsoutliers")
+library(tsoutliers)
+install.packages("fastDummies")
+library(fastDummies)
+install.packages("quantreg")
+library(quantreg)
+library(moments)
+library(gtable)
+library(grid)
+library(gridExtra)
+library(psych)
+library(carData)
+library(car)
+library(cowplot)
+install.packages("EnvStats")
+library(EnvStats)
+library(MASS)
+```
+
+
+```{r}
+#create object contatining addresses of current manufactured housing parks...This may or may not be used for analysis
+Address <- c("3110 Meadowbrook Dr, Blacksburg, VA 24060", "9607 Barbee Rd, Soddy-Daisy, TN 37379", "1007 Glentana St, Rossville, GA 30741", "248 Ironwood Dr., Hendersonville, NC 28739", "710 Sand Hill Rd, Asheville, NC 28806", "Carolina Drive, Spartanburg, SC 29306", "940 NC Highway 24, Newport, NC 28570", "1200 North 20th Street, Morehead City, NC 28557")
+
+lot_rent <- as.numeric(c(335, 320, 300, 400, NA, NA, NA, NA))
+NAME <- c("Montgomery", "Hamilton", "Catoosa", "Henderson", "Buncombe", "Spartanburg")
+CNTY_FIPS <- as.integer(c(121, 65, 47, 89, 21, 83))
+STATE_NAME <- as.character(c("Virginia", "Tennessee", "Georgia", "North Carolina", "North Carolina", "South Carolina"))
+
+MV <- data.table(Address, lot_rent, NAME, CNTY_FIPS, STATE_NAME)
+head(MV)
+
+MV2 <- mutate_geocode(MV, Address)
+head(MV2)
+
+```
+
+```{r}
+counties <- read.csv("USA_Counties.csv")
+head(counties)
+counties[counties$NAME == "Montgomery",]
+
+```
+
+```{r}
+#MERGE counties and MV
+dat <- left_join(counties, MV2, by = c("STATE_NAME" = "STATE_NAME", "NAME" = "NAME", "CNTY_FIPS" = "CNTY_FIPS"))
+View(dat)
+dat[dat$NAME == "Montgomery", ]
+colnames(dat)
+
+states <- c("Tennessee", "Alabama", "Georgia", "Mississippi", "Kentucky", "West virginia", "Virginia", "South Carolina", "North Carolina", "Florida", "Texas", "Lousiana")
+
+
+#remove unwanted columns
+dat1 <- dat[ , -c(1,2, 10, 35, 36, 39, 40, 41, 42, 43, 44, 56, 57, 58)]
+
+#create geocodable column for entire data set
+dat1$county_state <- paste(dat1$NAME, ",", dat1$STATE_NAME)
+
+dat2 <- mutate_geocode(dat1, county_state)
+head(dat2)
+dat2df <- data.frame(dat2)
+which(is.na(dat2df$lon...50))
+
+
+#Eliminate states that are not in the south
+dat3df <- dat2df[dat2df$STATE_NAME %in% states, ]
+dat3 <- data.table(dat3df)
+
+#spatial object
+coordinates(dat3) <- c("lon...50", "lat...51")
+
+#create projection
+crs.geo1 <- CRS("+proj=longlat")
+proj4string(dat3) <- crs.geo1
+```
+
+
+```{r}
+wd <- getwd()
+wd
+###### NOTE: with compressed zip folders, you have to extract ALL folder files then drag them back into the working directory. Only dragging the .shp file will not work... 
+
+map <- readOGR(dsn = wd, layer ="South")
+str(map)
+plot(map)
+points(dat3, pch = 20, col = "orange")
+```
+```{r}
+sites <- dat3[dat3$NAME %in% c("Montgomery", "Hamilton", "Catoosa", "Henderson", "Buncombe", "Spartanburg"), ]
+View(sites@data)
+
+sites <- sites[sites$STATE_NAME %in% c("Tennessee", "Virginia", "Georgia", "North Carolina", "South Carolina"), ]
+View(sites@data)
+
+# dataframe with just the sites of AM communities 
+sites <- sites[-c(1,2,4,6,10,12), ]
+View(sites@data)
+
+plot(map)
+points(dat3, pch = 20, col = "orange")
+points(sites, pch = 20, col = "steelblue")
+```
+```{r}
+head(sites@data)
+```
+
+```{r}
+
+#create new variable identifying rural vs. urban counties in the south
+dat4 <- dat3
+dat4$CNTY_STATUS <- c()
+for (i in 1:nrow(dat4)) {
+  dat4$CNTY_STATUS[i] <- if(dat3$POPULATION[i] <= 50000) {
+  print("Rural")
+} else {
+  print("Urban")
+}
+}
+
+head(dat4)
+```
+
+```{r}
+#calculate percent of housholds that own/rent 
+#dat4$percent_own <- (dat4$OWNER_OCC / dat4$HOUSEHOLDS) * 100
+#dat4$percent_rent <- (dat4$RENTER_OCC / dat4$HOUSEHOLDS) * 100
+
+dat5 <- dat4
+names(dat5)[names(dat5) == "lon...47"] <- "longitude"
+names(dat5)[names(dat5) == "lat...48"] <- "latitude"
+head(dat5)
+colnames(dat5)
+temp <- dat5[, -c(47,48)]
+
+
+#wite.table(dat3df, file = "test3.csv", sep = ",")
+
+
+#dat3df is not spatial data
+
+
+```
+
+
+
+```{r}
+manuf <- read.csv("US counties manufactured homes percent total southern counties.csv")
+head(manuf)
+manuf$Mobile_Home_units <- as.numeric(manuf$Mobile_Home_units)
+unique(manuf$state_name)
+
+#merge manufactured homes data to county dataframe
+head(dat5)
+dat6 <- merge(dat5, manuf, by.x = c("NAME", "STATE_NAME"), by.y = c("county_name", "state_name"))
+###
+#read in additional county data
+county_stats <- read.csv("County_stats.csv")
+county_stats$Area_name <- str_remove(county_stats$Area_name, "County")
+county_stats$Area_name <- str_remove(county_stats$Area_name, " ")
+head(county_stats)
+nchar(county_stats$Area_name[1])
+nchar(colnames(county_stats))
+county_stats <- clean_names(county_stats)
+
+#county_stats$Less_than_high_school_diploma_2015.19 <- as.numeric(county_stats$Less_than_high_school_diploma_2015.19)
+#county_stats$High_school_diploma_only_2015_19 <- as.numeric(county_stats$High_school_diploma_only_2015_19)
+#county_stats$Some_college_or_associates_degree_2015_19 <- as.numeric(county_stats$Some_college_or_associates_degree_2015_19)
+#county_stats$Bachelors_degree_or_higher_2015_19 <- as.numeric(county_stats$Bachelors_degree_or_higher_2015_19)
+#county_stats$Percent_of_adults_with_less_than_a_high_school_diploma_2015_19 <- as.numeric(county_stats$Percent_of_adults_with_less_than_a_high_school_diploma_2015_19)
+#county_stats$Percent_of_adults_with_a_high_school_diploma_only_2015_19 <- as.numeric(county_stats$Percent_of_adults_with_a_high_school_diploma_only_2015_19)
+#county_stats$Percent_of_adults_completing_some_college_or_associates_degree_2015_19 <- as.numeric(county_stats$Percent_of_adults_completing_some_college_or_associates_degree_2015_19)
+#county_stats$Percent_of_adults_with_a_bachelors_degree_or_higher_2015_19 <- as.numeric(county_stats$Percent_of_adults_with_a_bachelors_degree_or_higher_2015_19)
+#county_stats$Civilian_labor_force_2020 <- as.numeric(county_stats$Civilian_labor_force_2020)
+#county_stats$Employed_2020 <- as.numeric(county_stats$Employed_2020)
+#county_stats$Unemployed_2020 <- as.numeric(county_stats$Unemployed_2020)
+#county_stats$Unemployment_rate_2020 <- as.numeric(county_stats$Unemployment_rate_2020)
+#county_stats$Median_Household_Income_2019 <- as.numeric(county_stats$Median_Household_Income_2019)
+#county_stats$Med_HH_Income_Percent_of_State_Total_2019 <- as.numeric(county_stats$Med_HH_Income_Percent_of_State_Total_2019)
+
+#View(county_stats[county_stats$state == "TX", ])
+
+#merge additional county data to dat6
+dat7 <- merge(dat6, county_stats, by.x = c("NAME", "state_id"), by.y = c("area_name", "state"))
+head(dat7)
+View(dat7@data)
+nrow(dat7@data)
+sum(complete.cases(dat7@data))
+
+qplot(STATE_NAME, Manufacture_Homes_percent, data = dat6@data, geom = "boxplot") #boxplot of manufactured home percent by state
+```
+
+
+
+
+```{r}
+
+
+####################################################################################################
+###create state-level dataframes 
+#KY <- dat7@data[dat6$STATE_NAME == "Kentucky", ]
+#TX <- dat7@data[dat6$STATE_NAME == "Texas", ]
+#TN <- dat7@data[dat6$STATE_NAME == "Tennessee", ]
+#WV <- dat7@data[dat6$STATE_NAME == "West Virginia", ]
+#LO <- dat7@data[dat6$STATE_NAME == "Louisiana", ]
+#VA <- dat7@data[dat6$STATE_NAME == "Virginia", ]
+#MS <- dat7@data[dat6$STATE_NAME == "MIssissippi", ]
+#AL <- dat7@data[dat6$STATE_NAME == "Alabama", ]
+#GA <- dat7@data[dat6$STATE_NAME == "Georgia", ]
+#FL <- dat7@data[dat6$STATE_NAME == "Florida", ]
+#NC <- dat7@data[dat6$STATE_NAME == "North Carolina", ]
+#SC <- dat7@data[dat6$STATE_NAME == "South Carolina", ]
+
+#nrow(AL)
+#colnames(dat7@data)
+```
+
+```{r}
+### kentucky EDA 
+#qplot(x = POP_SQMI, y = Mobile_Home_units, data = KY)
+#qplot(x = MED_AGE, y = Mobile_Home_units, data = KY)
+#qplot(x = WHITE, y = Mobile_Home_units, data = KY)
+#qplot(x = BLACK, y = Mobile_Home_units, data = KY)
+#qplot(x = SQMI, y = Mobile_Home_units, data = KY) #Meaningful
+#qplot(x = less_than_high_school_diploma_2015_19, y = Mobile_Home_units, data = KY) #Meaningful
+#qplot(x = some_college_or_associates_degree_2015_19, y = Mobile_Home_units, data = KY)
+#qplot(x = percent_of_adults_with_less_than_a_high_school_diploma_2015_19, y = Mobile_Home_units, data = KY)
+
+#ggplot(KY, aes(x = SQMI, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = less_than_high_school_diploma_2015_19, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = SQMI, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = SQMI, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = percent_of_adults_with_less_than_a_high_school_diploma_2015_19, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = percent_of_adults_completing_some_college_or_associates_degree_2015_19, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = civilian_labor_force_2020, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = unemployed_2020 , y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = unemployment_rate_2020 , y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = median_household_income_2019 , y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+
+
+```
+
+```{r}
+#KY_m1 <- lm(Mobile_Home_units ~ POP_SQMI + WHITE + BLACK + ASIAN + HISPANIC + AVE_FAM_SZ + RENTER_OCC/HOUSEHOLDS + unemployment_rate_2020 + percent_of_adults_with_a_high_school_diploma_only_2015_19 + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + civilian_labor_force_2020, data = KY)
+
+#KY_m2 <- lm(Mobile_Home_units ~ POP_SQMI + log(WHITE) + log(BLACK) + log(ASIAN) + HISPANIC + factor(MED_AGE) + AVE_FAM_SZ + RENTER_OCC + OWNER_OCC + percent_of_adults_with_a_high_school_diploma_only_2015_19 + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_with_a_bachelors_degree_or_higher_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020  + unemployed_2020 + employed_2020, data = KY)
+
+
+#summary(KY_m1)
+#VIF(KY_m1)
+```
+
+```{r}
+
+#ggpairs(KY[, c(7,8,39,40,56:58,65:66)])
+
+
+
+
+# Test 
+#ggplot(KY, aes(x = employed_2020, y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+#ggplot(KY, aes(x = civilian_labor_force_2020 , y=Mobile_Home_units)) + geom_point() + geom_smooth(method = lm) + theme_bw()
+
+#y <- lm(Mobile_Home_units ~ factor(median_household_income_2019), data = KY)
+#summary(y)
+#head(KY)
+```
+
+
+
+
+
+```{r}
+# Personal Income by county
+
+TN_econ <- read.csv("CAINC30_TN_1969_2019.csv")
+colnames(TN_econ)
+TN_econ <- TN_econ[, -c(5,8,9:58)]
+View(TN_econ)
+TN_econ <- TN_econ[TN_econ$Description ==  " Per capita personal income 4/" , ]
+
+AL_econ <- read.csv("CAINC30_AL_1969_2019.csv")
+AL_econ <- AL_econ[, -c(5,8,9:58)]
+AL_econ <- AL_econ[AL_econ$Description == " Per capita personal income 4/", ]
+
+
+LA_econ <- read.csv("CAINC30_LA_1969_2019.csv")
+LA_econ <- LA_econ[, -c(5,8,9:58)]
+LA_econ <- LA_econ[LA_econ$Description == " Per capita personal income 4/", ]
+
+
+TX_econ <- read.csv("CAINC30_TX_1969_2019.csv")
+TX_econ <- TX_econ[, -c(5,8,9:58)]
+TX_econ <- TX_econ[TX_econ$Description == " Per capita personal income 4/", ]
+
+MS_econ <- read.csv("CAINC30_MS_1969_2019.csv")
+MS_econ <- MS_econ[, -c(5,8,9:58)]
+MS_econ <- MS_econ[MS_econ$Description == " Per capita personal income 4/", ]
+
+GA_econ <- read.csv("CAINC30_GA_1969_2019.csv")
+GA_econ <- GA_econ[, -c(5,8,9:58)]
+GA_econ <- GA_econ[GA_econ$Description == " Per capita personal income 4/", ]
+
+KY_econ <- read.csv("CAINC30_KY_1969_2019.csv")
+KY_econ <- KY_econ[, -c(5,8,9:58)]
+KY_econ <- KY_econ[KY_econ$Description == " Per capita personal income 4/", ]
+
+WV_econ <- read.csv("CAINC30_WV_1969_2019.csv")
+WV_econ <- WV_econ[, -c(5,8,9:58)]
+WV_econ <- WV_econ[WV_econ$Description == " Per capita personal income 4/", ]
+
+VA_econ <- read.csv("CAINC30_VA_1969_2019.csv")
+VA_econ <- VA_econ[, -c(5,8,9:58)]
+VA_econ <- VA_econ[VA_econ$Description == " Per capita personal income 4/", ]
+
+NC_econ <- read.csv("CAINC30_NC_1969_2019.csv")
+NC_econ <- NC_econ[, -c(5,8,9:58)]
+NC_econ <- NC_econ[NC_econ$Description == " Per capita personal income 4/", ]
+
+SC_econ <- read.csv("CAINC30_SC_1969_2019.csv")
+SC_econ <- SC_econ[, -c(5,8,9:58)]
+SC_econ <- SC_econ[SC_econ$Description == " Per capita personal income 4/", ]
+
+FL_econ <- read.csv("CAINC30_FL_1969_2019.csv")
+FL_econ <- FL_econ[, -c(5,8,9:58)]
+FL_econ <- FL_econ[FL_econ$Description == " Per capita personal income 4/", ]
+
+
+head(LA_econ)
+head(TN_econ)
+
+
+################################################################
+### create total dataframe combining all states together 
+income_dat <- bind_rows(TN_econ, AL_econ, LA_econ, TX_econ, MS_econ, GA_econ, KY_econ, WV_econ, VA_econ, NC_econ, SC_econ, FL_econ)
+View(income_dat)
+
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", TN"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", KY"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", NC"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", SC"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", AL"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", GA"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", MS"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", LA"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", TX"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", FL"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", WV"))
+income_dat$GeoName <- str_remove(income_dat$GeoName, c(", VA"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("(Independent City)"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Williamsburg*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Charlottesville*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Covington*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Waynesboro*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Lynchburg*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Galax*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Winchester*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Emporia*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Martinsville*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Radford*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Danville*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Hopewell*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(", Manassas+Manassas Park*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Salem*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(", Buena Vista + Lexingto*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Harrisonburg*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Franklin*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Fredericksburg*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Bristol*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Norton*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c("+ Poquoson*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(", Fairfax City + Falls Church*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(", Colonial Heights + Petersburg*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(", Staunton + Waynesboro*"))
+#income_dat$GeoName <- str_remove(income_dat$GeoName, c(" ()"))
+
+
+#Need to clean the income_dat dataframe containing all information about county-level demographics 
+# trim the Geoname column
+income_temp <- sub('\\+.*', '',income_dat$GeoName)
+income_temp1 <- sub('\\,.*', "", income_temp)
+income_temp2 <- sub('\\().*', "", income_temp1)
+income_temp3 <- trimws(income_temp2, which = c("right"))
+
+
+View(income_temp2)
+View(income_temp3)
+nchar(income_temp3[797])
+
+#cbind cleaned column back into income_dat
+income_dat1 <- cbind(income_dat, income_temp3)
+
+head(income_dat1)
+income_dat1 <- income_dat1[, c(8,1,2,3,4,5,6,7)]
+head(income_dat1)
+income_dat1 <- income_dat1[, -3]
+colnames(income_dat1)[1] <- "GeoName"
+head(income_dat1)
+```
+
+```{r}
+#strings <- c("yo, Hi", "free, we")
+#strings <- strings %>% str_replace(".*,", "")
+#strings
+#nchar(strings[1])
+#strings[1]
+```
+
+
+```{r}
+#str_remove
+
+#strings1 <- "virginia + maine*"
+#strings1 <- sub("\\+.*", "", strings1)
+#strings1
+```
+
+```{r}
+# income_dat1 = all county level personal income information from 2019
+# manuf = all county level population, mobile home units, and manufactured homes as % of all homes
+
+## im going to need to recreate the state-level dataframes after merging income_dat and dat7; once those merged, will need to merge to dat7
+
+```
+
+```{r}
+
+nchar(income_dat1[1, ]) #9
+nchar(manuf$county_name[1])
+
+dat6 <- merge(dat5, manuf, by.x = c("NAME", "STATE_NAME"), by.y = c("county_name", "state_name"))
+
+head(dat7@data)
+head(income_dat1)
+#convert GeoFIPS as integer
+income_dat1$GeoFIPS <- as.integer(income_dat1$GeoFIPS)
+head(income_dat1)
+```
+
+
+```{r}
+# merge  economic data to current master dataframe, dat7
+dat8 <- merge(dat7, income_dat1, by.x = c("NAME", "FIPS"), by.y = c("GeoName", "GeoFIPS"))
+View(dat8@data)
+dat8[dat8$NAME == "Autauga", ]
+
+
+```
+
+
+```{r}
+
+
+#KY_m1 <- lm(Mobile_Home_units~BLACK + WHITE + HISPANIC + OWNER_OCC + CROP_ACR12 + POP_SQMI + MED_AGE + high_school_diploma_only_2015_19 + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019, data = KY)
+
+
+#summary(KY_m1)
+
+
+KY_numeric <- KY[, c(8,10,11,12,13,15,32,39,43,44,54,56,60,62,67,74)]
+c <- cor(KY_numeric)
+#cmat <- cor_matrix(c)
+#colnames(cmat) <- colnames(KY_numeric)
+#rownames(cmat) <- colnames(KY_numeric)
+
+```
+
+```{r}
+#model diagnostics of KY_m1 
+#whichVars <- setdiff(names(KY_numeric), c("Mobile_Home_units"))
+#par(mfrow = c(3,3))
+#for (V in whichVars) {
+ # +   plot(KY_numeric[[V]], resid(KY_m1), main = V, xlab = "", pch = 16)
+  #+   lines(loess.smooth(KY_numeric[[V]], resid(KY_m1)), col = "red")
+}
+
+#KYm1_sum <- summary(KY_m1)
+#
+
+
+```
+
+```{r}
+
+# par(mfrow = c(2,2))
+# plot(KY_numeric$POP_SQMI, KY_numeric$Mobile_Home_units, pch = 16, xlab = "population/sqmi", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$POP_SQMI, KY_numeric$Mobile_Home_units), col = "red")
+# plot(KY_numeric$POP_SQMI, log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged population/sqmi", ylab = "logged mobile home units")
+# lines(loess.smooth(KY_numeric$POP_SQMI, log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# plot(KY_numeric$BLACK, KY_numeric$Mobile_Home_units, pch = 16, xlab = "Blacks", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$POP_SQMI, KY_numeric$Mobile_Home_units), col = "red")
+# plot(log(KY_numeric$BLACK), log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged blacks", ylab = "logged mobile home units")
+# lines(loess.smooth(log(KY_numeric$BLACK), log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$OWNER_OCC/KY$HOUSEHOLDS, KY_numeric$Mobile_Home_units, pch = 16, xlab = "OWNER %", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$OWNER_OCC/KY$HOUSEHOLDS, KY_numeric$Mobile_Home_units), col = "red")
+# plot(KY_numeric$OWNER_OCC/KY$HOUSEHOLDS, log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged owner %", ylab = "logged mobile home units")
+# lines(loess.smooth(KY_numeric$OWNER_OCC/KY$HOUSEHOLDS, log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$AVE_SALE12, KY_numeric$Mobile_Home_units, pch = 16, xlab = "Average sale", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$AVE_SALE12, KY_numeric$Mobile_Home_units), col = "red")
+# plot(log(KY_numeric$AVE_SALE12), log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged Average sale", ylab = "logged mobile home units")
+# lines(loess.smooth(log(KY_numeric$AVE_SALE12), log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$less_than_high_school_diploma_2015_19, KY_numeric$Mobile_Home_units, pch = 16, xlab = "less thanH HS", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$less_than_high_school_diploma_2015_19, KY_numeric$Mobile_Home_units), col = "red")
+# plot(log(KY_numeric$less_than_high_school_diploma_2015_19), log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged less than HS", ylab = "logged mobile home units")
+# lines(loess.smooth(log(KY_numeric$less_than_high_school_diploma_2015_19), log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$MED_AGE, KY_numeric$Mobile_Home_units, pch = 16, xlab = "Med Age", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$MED_AGE, KY_numeric$Mobile_Home_units), col = "red")
+# plot(KY_numeric$MED_AGE, log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "logged Med Age", ylab = "logged mobile home units")
+# lines(loess.smooth(KY_numeric$MED_AGE, log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$unemployment_rate_2020, KY_numeric$Mobile_Home_units, pch = 16, xlab = "U-rate", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$unemployment_rate_2020, KY_numeric$Mobile_Home_units), col = "red")
+# plot(KY_numeric$unemployment_rate_2020, log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "U-rate", ylab = "logged mobile home units")
+# lines(loess.smooth(KY_numeric$unemployment_rate_2020, log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# 
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$X2019, KY_numeric$Mobile_Home_units, pch = 16, xlab = "", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$X2019, KY_numeric$Mobile_Home_units), col = "red")
+# plot(log(KY_numeric$X2019), log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "", ylab = "logged mobile home units")
+# lines(loess.smooth(log(KY_numeric$X2019), log(KY_numeric$Mobile_Home_units)), col = "red")
+# 
+# par(mfrow = c(1,2))
+# plot(KY_numeric$ASIAN, KY_numeric$Mobile_Home_units, pch = 16, xlab = "ASIAN", ylab = "mobile home units")
+# lines(loess.smooth(KY_numeric$ASIAN, KY_numeric$Mobile_Home_units), col = "red")
+# plot(KY_numeric$ASIAN, log(KY_numeric$Mobile_Home_units), pch = 16, xlab = "log ASIAN", ylab = "logged mobile home units")
+# lines(loess.smooth(KY_numeric$ASIAN, log(KY_numeric$Mobile_Home_units)), col = "red")
+
+
+# EDA for variable transformation
+#log black
+#log white
+#log hispanic
+#log asian
+# keep (owner_occ / housholds) NOT logged 
+# log AVE_Sale12
+# Keep med_age as is 
+# keep U-rate as is 
+# log x2019
+
+
+
+
+
+
+
+```
+
+
+```{r}
+#### Model two for Kentucky 
+
+KY_m2 <- lm(Mobile_Home_units ~ log(BLACK) + log(WHITE) + log(HISPANIC) + ASIAN + OWNER_OCC/HOUSEHOLDS + log(POP_SQMI) + MED_AGE  + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + log(X2019) + log(AVE_SALE12), data = KY)
+summary(KY_m2)
+
+KYm2_sum <- summary(KY_m2)
+
+KYm1_sum$r.squared
+KYm2_sum$r.squared
+
+KYm1_sum$adj.r.squared
+KYm2_sum$adj.r.squared
+
+
+```
+
+```{r}
+#read in cnty-burden and clean it
+cnty_burden <- read.csv("County_burden.csv")
+
+cnty_burden$Area_name <- str_remove(cnty_burden$Area_name, c(" County"))
+
+
+cnty_burden <- cnty_burden[, -3]
+```
+
+```{r}
+#merge cnty_burden data to dat8
+
+dat9 <- merge(dat8, cnty_burden, by.x = c("NAME", "state_id"), by.y = c("Area_name", "State"))
+
+
+# removing incorrect NA value formats 
+dat10 <- dat9
+dat10[is.na(dat10) | dat10 == "Inf" | dat10 =="NaN"] <- NA
+head(dat10)
+```
+
+
+
+```{r}
+#recreate the state level dataframes 
+KY <- dat12[dat12$STATE_NAME == "Kentucky", ]
+TX <- dat12[dat12$STATE_NAME == "Texas", ]
+TN <- dat12[dat12$STATE_NAME == "Tennessee", ]
+WV <- dat12[dat12$STATE_NAME == "West Virginia", ]
+LA <- dat12[dat12$STATE_NAME == "Louisiana", ]
+VA <- dat12[dat12$STATE_NAME == "Virginia", ]
+MS <- dat12[dat12$STATE_NAME == "MIssissippi", ]
+AL <- dat12[dat12$STATE_NAME == "Alabama", ]
+GA <- dat12[dat12$STATE_NAME == "Georgia", ]
+FL <- dat12[dat12$STATE_NAME == "Florida", ]
+NC <- dat12[dat12$STATE_NAME == "North Carolina", ]
+SC <- dat12[dat12$STATE_NAME == "South Carolina", ]
+```
+
+```{r}
+#rerun model
+
+dat10$median_household_income_2019 <- as.numeric(dat10$median_household_income_2019)
+
+# Replace 0 values with 1 for log transformation
+dat10[dat10$BLACK == 0,] <- 1
+dat10[dat10$ASIAN == 0,] <- 1
+
+KY_m1 <- lm(log(Mobile_Home_units) ~ log(POP_SQMI) + log(WHITE) + log(BLACK) + log(HISPANIC) + OWNER_OCC/HOUSEHOLDS + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019 + Burdened_household_perc + median_household_income_2019 + AGE_85_UP + CNTY_STATUS, data = dat10)
+
+KY$median_household_income_2019 <- as.numeric(KY$median_household_income_2019)
+
+fit <- rq(log(Mobile_Home_units) ~ ., tau = 0.5, data = sub_dat10)
+summary(fit)
+#diagnostic plots
+#par(mfrow = c(2,2))
+#plot(KY_m1)
+ggqqplot(data=data.frame(residuals=residuals(KY_m1)), 
+         x="residuals", color="dodgerblue4", ggtheme = theme_pubclean())
+
+# set outliers to be 4 standard deviations away from zero
+ggplot() + 
+    geom_histogram(data=data.frame(residuals=residuals(KY_m1)), aes(x=residuals, y=..density..), bins=100, fill="dodgerblue4") + 
+    geom_density(data=data.frame(norm = rnorm(10000, mean=0, sd=sqrt(var(residuals(KY_m1))))), 
+                 aes(x=norm)) +
+    geom_rug(data=filter(data.frame(residuals = residuals(KY_m1)), 
+                    abs(residuals) > 4*sqrt(var(residuals(KY_m1)))), 
+             aes(x=residuals), color="dark green")
+
+
+ggplot() + 
+    geom_histogram(data=data.frame(residuals=residuals(KY_m1)), aes(x=residuals, y=..density..), bins=100, fill="dodgerblue4") + 
+    geom_density(data=data.frame(norm = rnorm(100000, mean=0, sd=sqrt(var(residuals(KY_m1))))), 
+                 aes(x=norm)) +
+    geom_rug(data=filter(data.frame(residuals = residuals(KY_m1)), 
+                    abs(residuals) > 4*sqrt(var(residuals(KY_m1)))), 
+             aes(x=residuals), color="dark green")
+
+#find the worst outlier
+iworst <- which.max(abs(residuals(KY_m1)))
+dat10[iworst,]
+
+skewness(KY_m1$residuals)# -1.845
+kurtosis(KY_m1$residuals) #18.01
+
+
+
+#different metrics used to measure the accuracy of the model 
+MAE <- function(prediction, true_values) {
+    return (mean(abs(prediction-true_values)))
+}
+
+prediction <- predict(KY_m1, newdata=KY)
+true_values <- KY$Mobile_Home_units
+paste("MAE between KY_model and Manufactured Homes Percentatge : ", MAE(prediction, true_values),".", sep="")
+
+MAPE <- function(prediction, true_values) {
+    return (mean(abs((prediction - true_values)/true_values)*100))
+}
+paste("MAPE between model and Mobile Home Units: ", MAPE(prediction, true_values),".", sep="")
+```
+
+```{r}
+JarqueBera.test(KY_m1$residuals) # testing the model residuals for normality....the manufacture_homes_percent Y seems to give best results
+
+colnames(dat10)
+sub_dat10 <- dat10[, c(8,11,12,13,15,39,54,60,62,67,68,74,75)]
+
+cor_subdat <- cor(sub_dat10)
+cor_subdat
+cmat <- cor_matrix(cor_subdat)
+colnames(cmat) <- colnames(sub_dat10)
+rownames(cmat) <- colnames(sub_dat10)
+view(cmat)
+
+colnames(dat12)
+
+```
+
+
+```{r}
+#POP_SQMI
+range(dat10$POP_SQMI)
+ggplot(dat10, aes(x=POP_SQMI, y=Mobile_Home_units, fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Manufactured Homes Percent")
+
+
+dat12 <-  dat10 %>% 
+    mutate(POP_SQMI = case_when(
+        POP_SQMI < 500 ~ 250,
+        POP_SQMI < 1000 & POP_SQMI >= 500 ~ 550,
+        POP_SQMI < 2000 & POP_SQMI >= 1000 ~ 1500,
+        POP_SQMI < 3000 & POP_SQMI >= 2000 ~ 2500,
+        POP_SQMI < 4000 & POP_SQMI >= 3000 ~ 3500,
+        POP_SQMI >= 4000 ~ 7500
+    ))
+
+
+dat12 <- dat12[,-c(46:49)]
+dat12<- dat12[complete.cases(dat12), ]
+dat12 <- cbind(dat12, residuals = residuals(KY_m1))
+
+
+```
+
+
+```{r}
+# read in more accurate demographic data that reflects stats from 2019
+
+#demo <- read.csv("new_demo_data.csv")
+#head(demo)
+```
+
+
+```{r}
+# Clean the demographic data
+
+#colnames(demo) <- demo[1,]
+#demo <- demo[-1, ]
+#demo$State <- gsub("^.*?, ","",demo$`Geographic Area Name`) 
+#colnames(demo)
+
+#demo1 <- demo[, c(1,2,3,5,6,7,9,11,13,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71,115,117,147,149,151,153,175,177, 279,281,359)]
+#demo1[demo1=="N"] = NA  
+
+#demo1 <- clean_names(demo1)
+
+
+#demo2 <- sapply(demo1[, c(3:46)], as.numeric)
+#demo2 <- data.frame(demo2)
+#demo2 <- cbind(demo2,demo1$geographic_area_name, demo1$state)
+
+
+#demo2 <- demo2[, c(45, 46, 1:44)]
+
+#clean geographic name column
+#step 1 - remove the state name
+#colnames(demo2)[colnames(demo2) == 'demo1$geographic_area_name'] <- 'County'
+#colnames(demo2)[colnames(demo2) == 'demo1$state'] <- 'State'
+#head(demo2)
+
+
+#demo2$County <- gsub("\\,.*", "",demo2$County) 
+#demo2$County <- str_remove(demo2$County, "County")
+#demo2$County <- str_remove(demo2$County, " ")
+
+
+# Dat12 isnt workable because demo2 had less observations (counties) than dat10. I can't lose that much data 
+
+#dat12 <- merge(dat10, demo2,by.x = c("NAME", "STATE_NAME"), by.y = c("County", "State"))
+#head(dat12)
+#View(dat12[dat12$STATE_NAME == "Texas", ])
+
+#nrow(dat10[dat10$STATE_NAME == "Texas",])
+#nrow(demo2[demo2$State == "Texas",])
+```
+
+```{r}
+## RAW DATA VIZ
+
+# qqplot of the dependent variable: not logged vs. logged
+qplot_units <- ggplot(dat12, aes(sample=Mobile_Home_units)) +
+  stat_qq(color="dodgerblue4") + 
+  stat_qq_line(color="red") +
+  scale_y_continuous(labels=function(y){y/10^6}) +
+  labs(title="QQ Plot for Mobile Home Units", y="Ordered Values") +
+  theme(plot.title=element_text(hjust=0.5))
+
+qplotl_units <- ggplot(dat12, aes(sample=log(Mobile_Home_units))) +
+  stat_qq(color="dodgerblue4") + 
+  stat_qq_line(color="red") +
+  scale_y_continuous(labels=function(y){y/10^6}) +
+  labs(title="QQ Plot for Logged Mobile Home Units", y="Ordered Values") +
+  theme(plot.title=element_text(hjust=0.5))
+qplotl_units
+
+
+grid.arrange(qplot_units, qplotl_units, nrow = 1)
+
+
+#independent varaibles
+g_black <- ggplot(dat12, aes(x=BLACK)) + geom_histogram(colour = "black", fill = "white", bins = 30,  boundary = 0)
+g_white <- ggplot(dat12, aes(x=WHITE)) + geom_histogram(colour = "black", fill = "white", boundary = 0)
+g_hisp <- ggplot(dat12, aes(x=HISPANIC)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0)
+g_asian <- ggplot(dat12, aes(x=ASIAN)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0)
+g_pop <- ggplot(dat12, aes(x=POP_SQMI)) + geom_histogram(colour = "black", fill = "white", bins = 30, binwidth = 500, boundary = 0)
+g_own <- ggplot(dat12, aes(x=OWNER_OCC/HOUSEHOLDS)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0) 
+g_Urate <- ggplot(dat12, aes(x=unemployment_rate_2020)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0)
+g_X2019 <- ggplot(dat12, aes(x=X2019)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0)
+g_HHI <- ggplot(dat12, aes(x=median_household_income_2019)) + geom_histogram(colour = "black", fill = "white", bins = 30, boundary = 0)
+
+#grid of not logged histograms 
+grid_nl <- grid.arrange(g_black, g_white, g_hisp, g_asian, g_pop, g_own, g_Urate,g_X2019, g_HHI, nrow = 3)
+grid_nl
+
+
+## LOGGING 
+gl_black <- ggplot(dat12, aes(x=log(BLACK))) +geom_histogram(aes(y=..density..),binwidth=.5,colour="black", fill="white") + geom_density(alpha=.2, fill="#FF6666")
+gl_white <- ggplot(dat12, aes(x=log(WHITE))) +geom_histogram(aes(y=..density..),binwidth=.5,colour="black", fill="white", boundary = 0) + geom_density(alpha=.2, fill="#FF6666")
+gl_hisp <- ggplot(dat12, aes(x=log(HISPANIC))) +geom_histogram(aes(y=..density..),binwidth=.5,colour="black", fill="white", boundary = 0) + geom_density(alpha=.2, fill="#FF6666")
+gl_asian <- ggplot(dat12, aes(x=log(ASIAN))) +geom_histogram(aes(y=..density..),binwidth=.5,colour="black", fill="white", boundary = 0) + geom_density(alpha=.2, fill="#FF6666")
+gl_pop <- ggplot(dat12, aes(x=log(POP_SQMI))) +geom_histogram(aes(y=..density..),binwidth=.5,colour="black", fill="white", boundary = 0) + geom_density(alpha=.2, fill="#FF6666")
+
+#grid of logged histograms 
+grid_l <- grid.arrange(gl_black, gl_white, gl_hisp, gl_asian, gl_pop, nrow = 2)
+
+
+
+
+
+
+#skewness/kurtosis of variables before and after logging 
+#Black
+skew_black <- skewness(dat12$BLACK)
+kurt_black <- kurtosis(dat12$BLACK)
+
+skewl_black <- skewness(log(dat12$BLACK))
+kurtl_black <- kurtosis(log(dat12$BLACK))
+
+list_black <- list(skew_black, kurt_black, skewl_black, kurtl_black)
+
+#WHITE
+skew_white <- skewness(dat12$WHITE)
+kurt_white <- kurtosis(dat12$WHITE)
+skewl_white <- skewness(log(dat12$WHITE))
+kurtl_white <- kurtosis(log(dat12$WHITE))
+
+
+list_white <- list(skew_white, kurt_white, skewl_white, kurtl_white)
+
+#HISPANIC 
+skew_hispanic <- skewness(dat12$HISPANIC)
+kurt_hispanic <- kurtosis(dat12$HISPANIC)
+skewl_hispanic <- skewness(log(dat12$HISPANIC))
+kurtl_hispanic <- kurtosis(log(dat12$HISPANIC))
+
+
+list_HISPANIC <- list(skew_hispanic, kurt_hispanic, skewl_hispanic, kurtl_hispanic)
+
+#ASIAN
+skew_asian <- skewness(dat12$ASIAN)
+kurt_asian <- kurtosis(dat12$ASIAN)
+skewl_asian <- skewness(log(dat12$ASIAN))
+kurtl_asian <- kurtosis(log(dat12$ASIAN))
+
+
+list_asian <- list(skew_asian, kurt_asian, skewl_asian, kurtl_asian)
+
+
+skewness(dat12$POP_SQMI)
+kurtosis(dat12$POP_SQMI)
+skewness(log(dat12$POP_SQMI))
+kurtosis(log(dat12$POP_SQMI))
+
+#shapiro test for normality
+shapiro.test(dat12$WHITE)
+shapiro.test(log(dat12$WHITE))
+shapiro.test(dat12$BLACK)
+shapiro.test(log(dat12$BLACK))
+shapiro.test(dat12$POP_SQMI)
+shapiro.test(log(dat12$POP_SQMI))
+shapiro.test(dat12$median_household_income_2019)
+shapiro.test(log(dat12$median_household_income_2019))
+shapiro.test(log(dat12$X2019))
+shapiro.test(log(KY$X2019))
+shapiro.test(KY$WHITE)
+shapiro.test(log(KY$WHITE))
+shapiro.test(KY$median_household_income_2019)
+shapiro.test(log(KY$median_household_income_2019))
+shapiro.test(TX$WHITE)
+shapiro.test(log(TX$WHITE))
+
+```
+
+
+```{r}
+# independent variables scatter and violin plots
+
+
+dat12 <- dat12[,-c(46:49)]
+dat12<- dat12[complete.cases(dat12), ]
+dat12 <- cbind(dat12, residuals = residuals(KY_m1))
+
+ggplot(dat12, aes(x=factor(POP_SQMI), y=residuals, fill=factor(POP_SQMI)))+
+    geom_violin(width=1.4)+
+    geom_boxplot(width=0.1, color="black", alpha=0.5, outlier.size=0.15) +
+    labs(x="Fin_sqft_cat", y="Residuals") +
+    stat_summary(fun=mean, geom="point") +
+    theme(legend.position="none")
+
+
+
+ggplot(dat12, aes(x=log(WHITE), y=log(Mobile_Home_units), fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+ggplot(dat12, aes(x=log(BLACK), y=log(Mobile_Home_units), fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+ggplot(dat12, aes(x=log(X2019), y=log(Mobile_Home_units), fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+ggplot(dat12, aes(x=log(ASIAN), y=log(Mobile_Home_units), fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+
+ggplot(dat12, aes(x=OWNER_OCC, y=log(Mobile_Home_units), fill=POP_SQMI))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+
+ggplot(dat12, aes(x=percent_of_adults_with_less_than_a_high_school_diploma_2015_19, y=log(Mobile_Home_units), fill=percent_of_adults_with_less_than_a_high_school_diploma_2015_19))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units") 
+
+ggplot(dat12, aes(x=percent_of_adults_completing_some_college_or_associates_degree_2015_19, y=log(Mobile_Home_units), fill=percent_of_adults_with_less_than_a_high_school_diploma_2015_19))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+ggplot(dat12, aes(x=unemployment_rate_2020, y=log(Mobile_Home_units), fill=unemployment_rate_2020))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+
+ggplot(dat12, aes(x=Burdened_household_perc, y=log(Mobile_Home_units), fill=Burdened_household_perc))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+ggplot(dat12, aes(x=median_household_income_2019, y=log(Mobile_Home_units), fill=median_household_income_2019))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="Mobile Home Units")
+
+#ggplot(dat12, aes(x=log(WHITE), y=log(BLACK), fill=log(WHITE)))+
+    geom_point(color="dodgerblue4", size=0.5) + 
+    theme(legend.position="none") +
+    labs(y="BLACKS") + geom_abline()
+
+# VIOLINS
+
+ggplot(dat12, aes(x=STATE_NAME, y=log(Mobile_Home_units), fill=STATE_NAME))+
+    geom_violin(width=1.4)+
+    geom_boxplot(width=0.1, color="black", alpha=0.5, outlier.size=0.1) +
+    labs(x="Region", y="Mobile Home Units)") +
+    stat_summary(fun=mean, geom="point") +
+    theme(legend.position="none")
+
+ggplot(dat12, aes(x=factor(Region), y=log(Mobile_Home_units), fill=factor(Region)))+
+    geom_violin(width=1.4)+
+    geom_boxplot(width=0.1, color="black", alpha=0.5, outlier.size=0.1) +
+    labs(x="Region", y="Mobile Home Units)") +
+    stat_summary(fun=mean, geom="point") +
+    theme(legend.position="none")
+
+ggplot(dat12, aes(x=CNTY_STATUS, y=log(Mobile_Home_units), fill=CNTY_STATUS))+
+    geom_violin(width=1.4)+
+    geom_boxplot(width=0.1, color="black", alpha=0.5, outlier.size=0.1) +
+    labs(x="Region", y="Mobile Home Units)") +
+    stat_summary(fun=mean, geom="point") +
+    theme(legend.position="none")
+```
+
+```{r}
+############### MODELING THE DATA 
+#master model
+M1 <- lm(Mobile_Home_units ~ log(POP_SQMI) + log(WHITE) + log(BLACK) + log(HISPANIC) + OWNER_OCC/HOUSEHOLDS + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019 + Burdened_household_perc + median_household_income_2019 + AGE_85_UP + CNTY_STATUS, data = dat12)
+
+summary(M1)
+
+#test Model with logged y
+M2 <- lm(log(Mobile_Home_units) ~ log(POP_SQMI) + log(WHITE) + log(BLACK) + log(HISPANIC) + OWNER_OCC/HOUSEHOLDS + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019 + Burdened_household_perc + median_household_income_2019 + AGE_85_UP + CNTY_STATUS, data = dat12)
+
+summary(M2)
+
+nrow(dat12)
+newdata <- dat12[800:1022, ]
+
+#check model accuracy for M1 and M2
+MAE <- function(prediction, true_values) {
+    return (mean(abs(prediction-true_values)))
+}
+
+prediction <- predict(M1, newdata=newdata)
+true_values <- dat12$Mobile_Home_units
+paste("MAE between M1 and Mobile Home Units : ", MAE(prediction, true_values),".", sep="")
+
+MAPE <- function(prediction, true_values) {
+    return (mean(abs((prediction - true_values)/true_values)*100))
+}
+paste("MAPE between model and Mobile Home Units: ", MAPE(prediction, true_values),".", sep="")
+```
+
+
+The models above were based on the entire dataset of counties within the South East US. The models were both widely inaccurate, therefore, the models below will treat each state as its own population. We will see if the prior model which aggregated over all states performs better/worse than models built on a state-by-state basis.
+
+```{r}
+# TEXAS
+M1_TX <- lm(log(Mobile_Home_units) ~ log(POP_SQMI) + log(WHITE) + log(BLACK) + log(HISPANIC) + OWNER_OCC/HOUSEHOLDS + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019 + Burdened_household_perc + median_household_income_2019 + AGE_85_UP + CNTY_STATUS, data = TX)
+
+summary(M1_TX)
+
+#normal test for residuals still fails, but it better than master model
+jarque.test(M1_TX$residuals)
+
+
+#find model accuracy
+
+newdat <- TX[150:227, ]
+prediction <- predict(M1_TX, newdata=newdat)
+true_values <- dat12$Mobile_Home_units
+
+MAE <- function(prediction, true_values) {
+    return (mean(abs(prediction-true_values)))
+}
+
+
+paste("MAE between M1_TX and Mobile Home Units : ", MAE(prediction, true_values),".", sep="")
+
+MAPE <- function(prediction, true_values) {
+    return (mean(abs((prediction - true_values)/true_values)*100))
+}
+paste("MAPE between M1_TX and Mobile Home Units: ", MAPE(prediction, true_values),".", sep="")
+
+
+```
+
+The accuracy of the model improved for Texas compared to the master model as measured by the Mean Average Percentage Error (even though the error is still quite large)
+
+```{r}
+#TENNESSEE 
+M1_TN <- lm(log(Mobile_Home_units) ~ log(POP_SQMI) + log(WHITE) + log(BLACK) + log(HISPANIC) + OWNER_OCC/HOUSEHOLDS + percent_of_adults_with_less_than_a_high_school_diploma_2015_19 + percent_of_adults_completing_some_college_or_associates_degree_2015_19 + unemployment_rate_2020 + X2019 + Burdened_household_perc + median_household_income_2019 + AGE_85_UP + CNTY_STATUS, data = TN)
+
+summary(M1_TN)
+#normality test - better results than master model
+jarque.test(M1_TN$residuals)
+
+
+
+newdat <- TN[60:95, ]
+prediction <- predict(M1_TN, newdata=newdat)
+true_values <- dat12$Mobile_Home_units
+
+MAE <- function(prediction, true_values) {
+    return (mean(abs(prediction-true_values)))
+}
+
+
+paste("MAE between M1_TN and Mobile Home Units : ", MAE(prediction, true_values),".", sep="")
+
+MAPE <- function(prediction, true_values) {
+    return (mean(abs((prediction - true_values)/true_values)*100))
+}
+paste("MAPE between M1_TN and Mobile Home Units: ", MAPE(prediction, true_values),".", sep="")
+
+```
+
+It seems that builing individual state-level models has more explanatory power through higher R-squarred values and is more accurate (MAPE).
