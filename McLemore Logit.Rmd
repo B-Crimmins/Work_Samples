@@ -1,0 +1,468 @@
+---
+title: "McLemore Logit"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+```
+
+
+```{r cars}
+library(e1071)
+library(rpart)
+## nonlinear svm
+library(lattice)
+library(caret)
+#Test Model performance
+#install.packages("ROCR")
+library("ROCR")
+#install.packages("naniar")
+library(naniar)
+library(caret)
+library(regclass)
+#install.packages("ggthemr")
+library(broom)
+library(grid)
+library(gridExtra)
+library(scales)
+library(ggthemes)
+library(data.table)
+library(janitor)
+library(stringr)
+library(PerformanceAnalytics)
+library(corrplot)
+install.packages("plotfunctions")
+library(plotfunctions)
+library(ggpubr)
+install.packages("logistf")
+install.packages("mlbench")
+install.packages("cutpointr")
+library(logistf)
+library(car)
+library(MASS)
+library(dplyr)
+library(mlbench)
+library(tidyverse)
+library(cutpointr)
+```
+
+```{r pressure, echo=FALSE}
+#read in data
+#getwd()
+
+BI <- read.csv("BI_CommunityInvestment_contacts.csv")
+HS <- read.csv("HS_CommunityInvsestment_Contacts.csv")
+
+nrow(BI)
+```
+
+```{r}
+#####
+#Cleaning
+#####
+#clean column headers
+BI <- clean_names(BI)
+HS <- clean_names(HS)
+
+str(BI) 
+#create & Close date needs to be in date format
+BI$i_createdate <- as.Date(BI$i_createdate)
+BI$closedate <- as.Date(BI$closedate)
+
+
+#fisrt_marketing_email needs date format
+HS$fisrt_marketing_email <- as.Date(HS$fisrt_marketing_email, format = "%Y-%m-%d")
+
+#concatenate first and last name
+HS$name <- paste(HS$first_name, HS$last_name)
+nrow(BI)
+```
+
+
+```{r}
+#fix BI$dealname
+BI_name <- BI$dealname
+BI_name <- str_remove(BI_name, "	- ")
+BI_name <- str_remove(BI_name, "- " )
+BI_name <- str_remove(BI_name, "-")
+BI_name <- str_remove(BI_name, "	  ")
+BI_name <- str_remove(BI_name, " Deal") 
+BI_name <- str_remove(BI_name, "CI Deal") 
+BI_name <- str_remove(BI_name, "MCL-Deal")
+BI_name <- str_remove(BI_name, "MCLDeal")
+BI_name <- str_remove(BI_name, "MCL--")
+BI_name <- str_remove(BI_name, "MCL-")
+BI_name <- str_remove(BI_name, "NewDeal ")
+BI_name <- str_remove(BI_name, "NewDeal")
+BI_name <- str_remove(BI_name," - New Deal")
+BI_name <- str_remove(BI_name,"New")
+BI_name <- str_remove(BI_name, ", FAIA, FACHA")
+BI_name <- str_remove(BI_name, " ()")
+BI_name <- str_remove(BI_name, " ")
+BI_name <- str_remove(BI_name, "McL CI -")
+BI_name <- str_remove(BI_name, "MCL CI ")
+BI_name <- str_remove(BI_name, "MCLCI")
+BI_name <- str_remove(BI_name, "McLCI")
+BI_name <- str_remove(BI_name, "McL CI Deal  - ")
+BI_name <- str_remove(BI_name, " - CI Deal")
+BI_name <- str_remove(BI_name, " - CI Deal")
+BI_name <- str_remove(BI_name, "CI")
+BI_name <- str_remove(BI_name, " ")
+
+
+BI_name <- trimws(BI_name)
+BI_name[30:53] <- gsub('  ', '', BI_name[30:53])
+BI_name <- gsub('  ', '', BI_name)
+
+#specific names
+BI_name[200] <- "Jeff Glowacki"
+BI_name[228] <- "John Thomas"
+BI_name[19] <- "Kevin Guarino"
+BI_name[20] <- "Michael Straw"
+BI_name[26] <- "Allen Hill"
+BI_name[62] <- "Andrew McCoy"
+BI_name[65] <- "B.W. Franks"
+BI_name[103] <- "Charles McDowell"
+BI_name[113] <- "Chris Peck"
+BI_name[1] <- "Allen Rogers"
+BI_name[100] <- "Chadwick Wallace"
+BI_name[210] <- "Jessica Dietrich Marsh"
+BI_name[349] <- "Sam Horner"
+BI_name[303] <- "Jon Sheumack"
+BI_name[421] <- "Mike McDaniel"
+BI_name[293] <- "Michel Leaughlin"
+BI_name[425] <- "Roger Marks"
+BI_name[23] <- "Shayne  McCallie"
+BI_name[273] <- "Mark League"
+BI_name[334] <- "Rob LeFever"
+BI_name[371] <- "Steve Husome"
+BI_name[385] <- "Terry DeWitt"
+BI_name[395] <- "Todd McClure"
+BI_name[304] <- "Nathan DuMond"
+BI_name[403] <- "Tommy McClelland"
+BI_name[409] <- "Wallace Michael and Regina"
+BI_name[20] <- "Michael Straw"
+
+
+#Separate first and last names with no spaces
+BI_name <- gsub('([[:upper:]])', ' \\1', BI_name)
+BI_name <- trimws(BI_name)
+
+BI_name[1:53] <- gsub('([[:upper:]])', ' \\1', BI_name[1:53])
+BI_name[420:430] <- gsub('([[:upper:]])', ' \\1', BI_name[420:430])
+BI_name[420:430] <- trimws(BI_name[423:430])
+
+
+#test 1
+nchar(BI_name)[2]#correct
+nchar(BI_name)[430]
+BI_name[1] <- gsub('([[:upper:]])', ' \\1', BI_name[1])
+
+#remove extra space
+BI_name <- gsub("\\s+"," ",BI_name)
+BI_name[23] <- gsub("\\s+"," ",BI_name[23])   #Bob Harrison
+BI_name[3:53] <- gsub("\\s+"," ",BI_name[3:53])
+BI_name[3:17] <- gsub("\\s+"," ",BI_name[3:17])
+BI_name[2:25] <- gsub("\\s+"," ",BI_name[2:25])
+
+View(BI_name)
+
+#Append the name vector back into BI
+BI <- cbind(BI, BI_name)
+
+```
+
+```{r}
+#look at the HS$name column
+View(HS$name)
+
+HS$name[246] <- "Steve Husome"
+HS$name[283] <- "William Ryan"
+HS$name[192] <- "Mike Mcdaniel"
+HS$name[80] <- "Frank McPhearson"
+HS$name[139] <- "John Thomas"
+HS$name[159] <- "Kenneth Engelsmann"
+
+```
+
+
+```{r}
+#merge the datasets based on name
+nrow(BI)
+nrow(HS)
+HSBI <- merge(BI, HS, by.x = "BI_name",by.y = "name")
+
+```
+
+```{r}
+#delete columns
+colnames(HSBI)
+HSBI <- HSBI[, -c(12,13)]  #remove duplicated name columns
+
+```
+
+```{r}
+#summary(HSBI) #the summary statistics makes since for each column
+
+#create prediction column from close date
+HSBI$CloseWon <- c()
+
+for (i in 1:nrow(HSBI)) {
+  if (is.na(HSBI$closedate[i])) {
+    HSBI$CloseWon[i] <- 0
+} else {
+    HSBI$CloseWon[i] <- 1  
+}
+}
+
+head(HSBI)
+```
+
+```{r}
+#change data type to numeric
+HSBI$CloseWon <- as.numeric(HSBI$CloseWon)
+#check proportion of deals are won or lost
+mean(HSBI$CloseWon)  #~52% of observations are closed won
+```
+```{r}
+#check missing values
+gg_miss_var(HSBI)  #mostly not an issue
+#sum(is.na(HSBI$number_of_times_contacted)) #1
+#sum(is.na(HSBI$number_of_sales_activities)) #1
+
+```
+
+```{r}
+##############
+#Exploratory Data Analysis
+#str(HSBI)
+
+#plot distributions of numeric data
+#days to close
+#number of time contcted
+#number of sales activities
+#average pageviews
+#marketing emails delivered
+#Number of unique forms submitted
+
+#below is a dataframe that removes all lost deals
+HSBI.CW <- filter(HSBI, CloseWon == 1)
+
+ggarrange(
+ggplot(data = HSBI.CW, mapping = aes(x = days_to_close, y = ..density..)) + geom_histogram(binwidth = 10, color = "black", fill = "white", boundary = 0),
+ggplot(data = HSBI, mapping = aes(x = number_of_times_contacted, y = ..density..)) + geom_histogram(binwidth = 1, color = "black", fill = "white",boundary = 1),
+ggplot(data = HSBI, mapping = aes(x = number_of_sales_activities, y = ..density..)) + geom_histogram(binwidth = 2, color = "black", fill = "white",boundary = 1),
+ggplot(data = HSBI, mapping = aes(x = average_pageviews, y = ..density..)) + geom_histogram(binwidth = 1, color = "black", fill = "white",boundary = 0),
+ggplot(data = HSBI, mapping = aes(x = marketing_emails_delivered, y = ..density..)) + geom_histogram(binwidth = 2, color = "black", fill = "white",boundary = 1),
+ggplot(data = HSBI, mapping = aes(x = number_of_unique_forms_submitted, y = ..density..)) + geom_histogram(binwidth = 1, color = "black", fill = "white",boundary = 1), 
+ncol = 3, nrow = 2)
+
+
+```
+
+```{r}
+#Proportion of Closed Won vs. Lost based on specific variables
+par(mfrow = c(2,1))
+plot(factor(CloseWon) ~ factor(number_of_times_contacted), data=HSBI, col=c(2,9), ylab="Closed Won Rate", xlab = "Number of Times Contacted")
+plot(factor(CloseWon) ~ factor(marketing_emails_delivered), data=HSBI, col=c(2,9), ylab="Closed Won Rate", xlab = "Marketing Emails Delivered")
+```
+
+
+```{r}
+#State
+plot(factor(CloseWon) ~ factor(state), data = HSBI, col = c(2,9), ylab = "Closed Won Rate", cex.names = 0.5)
+```
+
+
+```{r}
+#Original Source
+plot(factor(CloseWon) ~ factor(original_source), data = HSBI, col = c(2,9), ylab = "Closed Won Rate", xlab =  "Original Source")
+
+```
+
+
+```{r}
+#filter out close lost deals
+HSBI.CW <- filter(HSBI, CloseWon == 1)
+#boxplot of days to close by state
+#Of all deals that closed won, NY, IL, CO, CA, VA were the shorted time to close by looking at the median time
+ggplot(data = HSBI.CW, aes(x = factor(state), y = days_to_close)) + geom_boxplot()
+ggplot(data = HSBI, aes(x =number_of_times_contacted, y = days_to_close)) + geom_point()
+```
+
+
+```{r}
+#plot days to close by contact owner
+#shawn seems to get deals closed quicker
+ggarrange(
+ggplot(data = HSBI.CW, aes(x = factor(contact_owner), y = days_to_close)) + geom_boxplot() + labs(title = "Days to Close By Deal Owner"), 
+
+#cannot determine whether someone is taking more time to close due to 
+# number of times contacted, or visa versa.
+
+
+ggplot(data = HSBI, aes(x =original_source, y = average_pageviews)) + geom_boxplot() + labs(title = "Page Views by Source Marketing"),
+
+#look at of closed won deals, which ones were quicker 
+# to close based on marketing source
+ggplot(data = HSBI.CW, aes(x =original_source, y = days_to_close)) + geom_boxplot() + labs(title = "Days to Close by Source Marketing"),
+
+ncol = 3, nrow = 1)
+
+
+```
+
+```{r}
+#group by to get percent of won deals by state
+#HSBI.CW %>% group_by(state) %>% summarise(sum(CloseWon)) 
+```
+
+```{r}
+#split data into test/train
+all <- 1:nrow(HSBI)
+train <- sort(sample(1:nrow(HSBI), round(nrow(HSBI)*0.75, digits = 0), replace=FALSE))
+test <- all[-train]
+
+HSBI_train <- HSBI[train, ]
+HSBI_test <- HSBI[test, ]
+
+```
+
+```{r}
+#logit Model 1
+mod.glm <- glm(CloseWon ~ factor(state) + number_of_times_contacted + number_of_sales_activities + factor(original_source) + average_pageviews + marketing_emails_delivered + sends_since_last_engagement, data = HSBI_train, family = "binomial")
+
+```
+
+```{r}
+#print Summary output
+summary(mod.glm)
+```
+
+```{r}
+#plot residuals of model vs. all predictors
+#plots should show no trend other than horizontal line.
+#any trend indicates there is a relationship between 
+#residuals and predictor
+
+#number of times contacted and number of sales activities may require a transformation
+residualPlots(mod.glm)
+
+```
+
+We pass the training set into the rfe algorithm to allow for recursive feature selection. The result will provide an optimal model based on minimizing the RMSE 
+```{r}
+#feature selection
+
+#RFE cannot read in NA values
+HSBI_train$number_of_sales_activities[is.na(HSBI_train$number_of_sales_activities)] <- 0
+HSBI_train$number_of_times_contacted[is.na(HSBI_train$number_of_times_contacted)] <- 0
+
+sum(is.na(HSBI_train$number_of_times_contacted))
+sum(is.na(HSBI_train$number_of_sales_activities))
+
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+rfe <- rfe(HSBI_train[,c(13,16,17,19,20,21,26)], HSBI_train[,30], sizes = c(1:7), rfeControl = control)
+```
+
+
+```{r}
+#get table
+print(rfe)
+```
+
+#4 variables is the optimal model including: "marketing_emails_delivered"  "number_of_times_contacted"   "number_of_sales_activities"  "sends_since_last_engagement"
+```{r}
+#get predictors
+rfe$optVariables
+
+#plots the number of variables with reduction function on y-axis
+plot(rfe, type = c("g", "o"))
+```
+Although the optimal model includes 4 variables, we see a higher psudo R^2 with the original model call.
+
+```{r}
+#nulmodel
+nullmod <- glm(CloseWon ~ 1, data = HSBI_train, family = "binomial")
+
+#pseudo R-squarred
+1-logLik(mod.glm) / logLik(nullmod)
+#1-logLik(mod.opt) / logLik(nullmod)
+```
+
+```{r}
+#run optimal model based on RFE output
+mod.opt <- glm(CloseWon ~ marketing_emails_delivered + number_of_sales_activities + number_of_times_contacted + sends_since_last_engagement, data = HSBI_train, family = "binomial")
+
+summary(mod.opt)
+
+```
+```{r}
+#predict the optimal model
+pred.opt <- predict(mod.opt, HSBI_test, type = "response")
+
+
+#Length of test set is not ideal
+nrow(HSBI_test)
+```
+```{r}
+#setup dataframe with predictions values and actuals for visuals
+cmdf <- data.frame(pred.opt, HSBI_test$CloseWon)
+cmdf$pred.opt <- round(cmdf$pred.opt,4)
+
+table(ifelse(cmdf$pred.opt>0.5, "1", "0"))
+table(cmdf$HSBI_test.CloseWon)
+
+
+
+cm <- confusionMatrix(as.factor(ifelse(cmdf$pred.opt>0.50, 1, 0)), as.factor(cmdf$HSBI_test.CloseWon))
+# Accuracy = 65% with cuttoff at .5
+cm
+```
+The accuracy is ~65% TN+TP/(TN+TP+FN+FP); however, the p-value fails. The overall accuracy rate is not greater than than the proportion of the largest class in the test set according to p-value. 
+
+We would like to see more data in the test set
+
+```{r}
+#create for loop for confusion matrix types for plotting
+cmdf$type <- ""
+#cutoff = 50%
+# for (i in 1:nrow(cmdf)) {
+#   if (cmdf$pred.opt[i] >= 0.5 & cmdf$HSBI_test.CloseWon[i] == 1)
+#     cmdf$type[i] <- "TP"
+#   else if (cmdf$pred.opt[i] >= 0.5 & cmdf$HSBI_test.CloseWon[i] == 0)
+#     cmdf$type[i] <- "FP"
+#   else if (cmdf$pred.opt[i] < 0.5 & cmdf$HSBI_test.CloseWon[i] == 1)
+#     cmdf$type[i] <- "FN"
+#   else if (cmdf$pred.opt[i] < 0.5 & cmdf$HSBI_test.CloseWon[i] == 0)
+#     cmdf$type[i] <- "TN"
+#   else (cmdf$pred.opt[i] <- "NA")
+# }
+```
+
+
+```{r}
+#plot the confusion matrix result type 
+ggplot(data = cmdf, aes(x = HSBI_test.CloseWon,y = pred.opt, color = type)) + geom_point(alpha = 0.25, size = 0.05) + geom_jitter() + geom_hline(yintercept = .5, color = "black") + labs(title = "Confusion Matrix Results, Cutoff = 0.5", x = 'Predicted', y = 'Actual')
+
+```
+
+
+
+Below shows no observable trend between the independent variables in the optimized model and the residuals.
+
+```{r}
+#Test for Relationship with covariates and model residuals
+#No predictor shows a trend with the residuals
+residualPlots(mod.opt) 
+```
+
+
+
